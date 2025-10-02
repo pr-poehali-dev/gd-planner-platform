@@ -26,9 +26,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import 'jspdf-customfonts';
+import pdfMake from 'pdfmake/build/pdfmake';
+import pdfFonts from 'pdfmake/build/vfs_fonts';
+
+pdfMake.vfs = pdfFonts.pdfMake.vfs;
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,13 +38,21 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+interface ResponsiblePerson {
+  id: number;
+  name: string;
+  position: string;
+  phone: string;
+  email: string;
+}
+
 interface ScheduleEvent {
   id: number;
   date: string;
   timeStart: string;
   timeEnd: string;
   title: string;
-  type: 'session' | 'committee' | 'meeting' | 'visit' | 'vcs' | 'other';
+  type: 'session' | 'committee' | 'meeting' | 'visit' | 'vcs' | 'regional-trip' | 'other';
   location: string;
   description: string;
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
@@ -51,6 +60,8 @@ interface ScheduleEvent {
   reminderMinutes?: number;
   archived?: boolean;
   vcsLink?: string;
+  regionName?: string;
+  responsiblePersonId?: number;
 }
 
 const Index = () => {
@@ -58,11 +69,29 @@ const Index = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isPersonDialogOpen, setIsPersonDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
+  
+  const [responsiblePersons, setResponsiblePersons] = useState<ResponsiblePerson[]>([
+    {
+      id: 1,
+      name: 'Иванов Иван Иванович',
+      position: 'Помощник депутата',
+      phone: '+7 (495) 123-45-67',
+      email: 'ivanov@duma.gov.ru',
+    },
+  ]);
+  
+  const [newPerson, setNewPerson] = useState<Partial<ResponsiblePerson>>({
+    name: '',
+    position: '',
+    phone: '',
+    email: '',
+  });
   
   const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([
     {
@@ -187,6 +216,23 @@ const Index = () => {
       reminderMinutes: 15,
       archived: false,
       vcsLink: 'https://meet.example.com/regional-meeting-2025',
+      responsiblePersonId: 1,
+    },
+    {
+      id: 10,
+      date: '05.10.2025',
+      timeStart: '09:00',
+      timeEnd: '18:00',
+      title: 'Рабочая поездка в Московскую область',
+      type: 'regional-trip',
+      location: '',
+      description: 'Встречи с местными органами власти, инспекция объектов строительства',
+      status: 'scheduled',
+      reminder: true,
+      reminderMinutes: 60,
+      archived: false,
+      regionName: 'Московская область',
+      responsiblePersonId: 1,
     },
   ]);
 
@@ -202,6 +248,9 @@ const Index = () => {
     reminder: false,
     reminderMinutes: 15,
     archived: false,
+    vcsLink: '',
+    regionName: '',
+    responsiblePersonId: undefined,
   });
 
   const [editEvent, setEditEvent] = useState<Partial<ScheduleEvent>>({});
@@ -212,6 +261,7 @@ const Index = () => {
     meeting: 'Встреча',
     visit: 'Поездка',
     vcs: 'ВКС',
+    'regional-trip': 'Выезд в регион',
     other: 'Другое',
   };
 
@@ -221,6 +271,7 @@ const Index = () => {
     meeting: 'UserCheck',
     visit: 'MapPin',
     vcs: 'Video',
+    'regional-trip': 'Plane',
     other: 'Calendar',
   };
 
@@ -237,6 +288,7 @@ const Index = () => {
     meeting: 'bg-green-500/10 text-green-700 border-green-200',
     visit: 'bg-orange-500/10 text-orange-700 border-orange-200',
     vcs: 'bg-cyan-500/10 text-cyan-700 border-cyan-200',
+    'regional-trip': 'bg-indigo-500/10 text-indigo-700 border-indigo-200',
     other: 'bg-gray-500/10 text-gray-700 border-gray-200',
   };
 
@@ -273,6 +325,11 @@ const Index = () => {
         if (now >= eventEnd && event.status !== 'completed') {
           newStatus = 'completed';
           hasChanges = true;
+          
+          const daysSinceEnd = Math.floor((now.getTime() - eventEnd.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysSinceEnd >= 7 && !event.archived) {
+            return { ...event, status: newStatus, archived: true };
+          }
         } else if (now >= eventStart && now < eventEnd && event.status === 'scheduled') {
           newStatus = 'in-progress';
           hasChanges = true;
@@ -366,6 +423,8 @@ const Index = () => {
         reminderMinutes: newEvent.reminderMinutes || 15,
         archived: false,
         vcsLink: newEvent.vcsLink || '',
+        regionName: newEvent.regionName || '',
+        responsiblePersonId: newEvent.responsiblePersonId,
       };
       setScheduleEvents([...scheduleEvents, event]);
       setIsAddDialogOpen(false);
@@ -382,6 +441,8 @@ const Index = () => {
         reminderMinutes: 15,
         archived: false,
         vcsLink: '',
+        regionName: '',
+        responsiblePersonId: undefined,
       });
       toast.success('Мероприятие добавлено в график');
     }
@@ -410,6 +471,8 @@ const Index = () => {
               reminder: editEvent.reminder || false,
               reminderMinutes: editEvent.reminderMinutes || 15,
               vcsLink: editEvent.vcsLink || '',
+              regionName: editEvent.regionName || '',
+              responsiblePersonId: editEvent.responsiblePersonId,
             }
           : event
       );
@@ -457,76 +520,212 @@ const Index = () => {
     setIsViewDialogOpen(true);
   };
 
-  const utf8Encode = (text: string): string => {
-    return unescape(encodeURIComponent(text));
-  };
-
   const exportToPDF = (events?: ScheduleEvent[], dateStr?: string) => {
-    const doc = new jsPDF();
     const eventsToExport = events || scheduleEvents.filter(e => !e.archived);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(18);
     
-    const title = dateStr 
-      ? `График работы депутата на ${dateStr}`
-      : 'График работы депутата Государственной Думы РФ';
-    doc.text(title, 14, 20);
-
-    doc.setFontSize(10);
-    doc.text(`Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`, 14, 28);
-
-    const tableData = eventsToExport.map((event) => [
-      event.date,
-      `${event.timeStart} - ${event.timeEnd}`,
-      event.title,
-      typeLabels[event.type],
-      event.type === 'vcs' ? (event.vcsLink || 'ВКС') : event.location,
-      statusLabels[event.status],
-    ]);
-
-    autoTable(doc, {
-      startY: 35,
-      head: [['Дата', 'Время', 'Мероприятие', 'Тип', 'Место/Ссылка', 'Статус']],
-      body: tableData,
-      styles: {
-        font: 'helvetica',
-        fontSize: 9,
-      },
-      headStyles: {
-        fillColor: [0, 57, 166],
-        textColor: 255,
-        fontStyle: 'bold',
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
-      margin: { top: 35 },
+    const tableBody = eventsToExport.map((event) => {
+      const responsiblePerson = event.responsiblePersonId 
+        ? responsiblePersons.find(p => p.id === event.responsiblePersonId)
+        : null;
+      
+      let locationText = '';
+      if (event.type === 'vcs') {
+        locationText = event.vcsLink || 'ВКС';
+      } else if (event.type === 'regional-trip') {
+        locationText = event.regionName || 'Регион не указан';
+      } else {
+        locationText = event.location;
+      }
+      
+      return [
+        event.date,
+        `${event.timeStart} - ${event.timeEnd}`,
+        event.title,
+        typeLabels[event.type],
+        locationText,
+        responsiblePerson?.name || '-',
+        statusLabels[event.status],
+      ];
     });
 
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.text(
-        `Stranica ${i} iz ${pageCount}`,
-        doc.internal.pageSize.getWidth() / 2,
-        doc.internal.pageSize.getHeight() - 10,
-        { align: 'center' }
-      );
-    }
+    const docDefinition: any = {
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      content: [
+        {
+          text: dateStr 
+            ? `График работы депутата на ${dateStr}`
+            : 'График работы депутата Государственной Думы РФ',
+          style: 'header',
+          margin: [0, 0, 0, 10]
+        },
+        {
+          text: `Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`,
+          style: 'subheader',
+          margin: [0, 0, 0, 20]
+        },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['auto', 'auto', '*', 'auto', '*', 'auto', 'auto'],
+            body: [
+              ['Дата', 'Время', 'Мероприятие', 'Тип', 'Место/Регион', 'Ответственный', 'Статус'],
+              ...tableBody
+            ]
+          },
+          layout: {
+            fillColor: (rowIndex: number) => (rowIndex === 0 ? '#0039A6' : (rowIndex % 2 === 0 ? '#f5f5f5' : null)),
+            hLineWidth: () => 0.5,
+            vLineWidth: () => 0.5,
+            hLineColor: () => '#cccccc',
+            vLineColor: () => '#cccccc',
+          }
+        }
+      ],
+      styles: {
+        header: {
+          fontSize: 18,
+          bold: true,
+          alignment: 'center'
+        },
+        subheader: {
+          fontSize: 10,
+          alignment: 'center',
+          color: '#666666'
+        }
+      },
+      defaultStyle: {
+        font: 'Roboto',
+        fontSize: 9
+      }
+    };
 
     const filename = dateStr 
       ? `График_${dateStr.replace(/[^0-9]/g, '_')}.pdf`
       : `График_работы_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '_')}.pdf`;
-    
-    doc.save(filename);
+
+    pdfMake.createPdf(docDefinition).download(filename);
     toast.success('График экспортирован в PDF');
+  };
+  
+  const printSchedule = (events?: ScheduleEvent[], dateStr?: string) => {
+    const eventsToExport = events || scheduleEvents.filter(e => !e.archived);
+    
+    const tableBody = eventsToExport.map((event) => {
+      const responsiblePerson = event.responsiblePersonId 
+        ? responsiblePersons.find(p => p.id === event.responsiblePersonId)
+        : null;
+      
+      let locationText = '';
+      if (event.type === 'vcs') {
+        locationText = event.vcsLink || 'ВКС';
+      } else if (event.type === 'regional-trip') {
+        locationText = event.regionName || 'Регион не указан';
+      } else {
+        locationText = event.location;
+      }
+      
+      return [
+        event.date,
+        `${event.timeStart} - ${event.timeEnd}`,
+        event.title,
+        typeLabels[event.type],
+        locationText,
+        responsiblePerson?.name || '-',
+        statusLabels[event.status],
+      ];
+    });
+
+    const docDefinition: any = {
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      content: [
+        {
+          text: dateStr 
+            ? `График работы депутата на ${dateStr}`
+            : 'График работы депутата Государственной Думы РФ',
+          style: 'header',
+          margin: [0, 0, 0, 10]
+        },
+        {
+          text: `Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`,
+          style: 'subheader',
+          margin: [0, 0, 0, 20]
+        },
+        {
+          table: {
+            headerRows: 1,
+            widths: ['auto', 'auto', '*', 'auto', '*', 'auto', 'auto'],
+            body: [
+              ['Дата', 'Время', 'Мероприятие', 'Тип', 'Место/Регион', 'Ответственный', 'Статус'],
+              ...tableBody
+            ]
+          },
+          layout: {
+            fillColor: (rowIndex: number) => (rowIndex === 0 ? '#0039A6' : (rowIndex % 2 === 0 ? '#f5f5f5' : null)),
+            hLineWidth: () => 0.5,
+            vLineWidth: () => 0.5,
+            hLineColor: () => '#cccccc',
+            vLineColor: () => '#cccccc',
+          }
+        }
+      ],
+      styles: {
+        header: {
+          fontSize: 18,
+          bold: true,
+          alignment: 'center'
+        },
+        subheader: {
+          fontSize: 10,
+          alignment: 'center',
+          color: '#666666'
+        }
+      },
+      defaultStyle: {
+        font: 'Roboto',
+        fontSize: 9
+      }
+    };
+
+    pdfMake.createPdf(docDefinition).print();
+    toast.success('Отправлено на печать');
   };
 
   const exportDayToPDF = (dateStr: string) => {
     const dayEvents = scheduleEvents.filter(e => e.date === dateStr && !e.archived);
     exportToPDF(dayEvents, dateStr);
+  };
+  
+  const printDay = (dateStr: string) => {
+    const dayEvents = scheduleEvents.filter(e => e.date === dateStr && !e.archived);
+    printSchedule(dayEvents, dateStr);
+  };
+  
+  const handleAddPerson = () => {
+    if (newPerson.name && newPerson.position) {
+      const person: ResponsiblePerson = {
+        id: Math.max(...responsiblePersons.map((p) => p.id), 0) + 1,
+        name: newPerson.name!,
+        position: newPerson.position!,
+        phone: newPerson.phone || '',
+        email: newPerson.email || '',
+      };
+      setResponsiblePersons([...responsiblePersons, person]);
+      setIsPersonDialogOpen(false);
+      setNewPerson({
+        name: '',
+        position: '',
+        phone: '',
+        email: '',
+      });
+      toast.success('Ответственное лицо добавлено');
+    }
+  };
+  
+  const handleDeletePerson = (id: number) => {
+    setResponsiblePersons(responsiblePersons.filter((p) => p.id !== id));
+    toast.success('Ответственное лицо удалено');
   };
 
   const upcomingReminders = scheduleEvents
@@ -605,11 +804,127 @@ const Index = () => {
                         <Icon name="Calendar" size={22} className="text-primary" />
                         <span className="text-xl">График работы депутата</span>
                       </CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => exportToPDF()} className="shadow-sm">
-                          <Icon name="FileDown" size={16} className="mr-2" />
-                          Экспорт в PDF
-                        </Button>
+                      <div className="flex gap-2 flex-wrap">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" className="shadow-sm">
+                              <Icon name="Download" size={16} className="mr-2" />
+                              Экспорт
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent>
+                            <DropdownMenuItem onClick={() => exportToPDF()}>
+                              <Icon name="FileDown" size={16} className="mr-2" />
+                              Скачать PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => printSchedule()}>
+                              <Icon name="Printer" size={16} className="mr-2" />
+                              Печать
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Dialog open={isPersonDialogOpen} onOpenChange={setIsPersonDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" className="shadow-sm">
+                              <Icon name="Users" size={16} className="mr-2" />
+                              Ответственные
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>Управление ответственными лицами</DialogTitle>
+                              <DialogDescription>
+                                Добавьте или удалите ответственных за мероприятия
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                              <div className="space-y-3">
+                                {responsiblePersons.map((person) => (
+                                  <Card key={person.id} className="p-4">
+                                    <div className="flex items-start justify-between">
+                                      <div className="space-y-1">
+                                        <h4 className="font-semibold">{person.name}</h4>
+                                        <p className="text-sm text-muted-foreground">{person.position}</p>
+                                        {person.phone && (
+                                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                            <Icon name="Phone" size={12} />
+                                            {person.phone}
+                                          </p>
+                                        )}
+                                        {person.email && (
+                                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                            <Icon name="Mail" size={12} />
+                                            {person.email}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleDeletePerson(person.id)}
+                                      >
+                                        <Icon name="Trash2" size={16} className="text-destructive" />
+                                      </Button>
+                                    </div>
+                                  </Card>
+                                ))}
+                              </div>
+                              <div className="border-t pt-4 space-y-3">
+                                <h4 className="font-semibold">Добавить ответственное лицо</h4>
+                                <div className="grid gap-3">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="person-name">ФИО</Label>
+                                    <Input
+                                      id="person-name"
+                                      value={newPerson.name}
+                                      onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })}
+                                      placeholder="Иванов Иван Иванович"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="person-position">Должность</Label>
+                                    <Input
+                                      id="person-position"
+                                      value={newPerson.position}
+                                      onChange={(e) => setNewPerson({ ...newPerson, position: e.target.value })}
+                                      placeholder="Помощник депутата"
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                      <Label htmlFor="person-phone">Телефон</Label>
+                                      <Input
+                                        id="person-phone"
+                                        value={newPerson.phone}
+                                        onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })}
+                                        placeholder="+7 (495) 123-45-67"
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label htmlFor="person-email">Email</Label>
+                                      <Input
+                                        id="person-email"
+                                        type="email"
+                                        value={newPerson.email}
+                                        onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })}
+                                        placeholder="email@duma.gov.ru"
+                                      />
+                                    </div>
+                                  </div>
+                                  <Button onClick={handleAddPerson} className="w-full">
+                                    <Icon name="Plus" size={16} className="mr-2" />
+                                    Добавить
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setIsPersonDialogOpen(false)}>
+                                Закрыть
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
                         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                           <DialogTrigger asChild>
                             <Button className="shadow-sm">
@@ -652,6 +967,7 @@ const Index = () => {
                                       <SelectItem value="meeting">Встреча</SelectItem>
                                       <SelectItem value="visit">Поездка</SelectItem>
                                       <SelectItem value="vcs">ВКС</SelectItem>
+                                      <SelectItem value="regional-trip">Выезд в регион</SelectItem>
                                       <SelectItem value="other">Другое</SelectItem>
                                     </SelectContent>
                                   </Select>
@@ -696,6 +1012,16 @@ const Index = () => {
                                     placeholder="Введите ссылку на видеоконференцсвязь"
                                   />
                                 </div>
+                              ) : newEvent.type === 'regional-trip' ? (
+                                <div className="space-y-2">
+                                  <Label htmlFor="regionName">Название региона</Label>
+                                  <Input
+                                    id="regionName"
+                                    value={newEvent.regionName}
+                                    onChange={(e) => setNewEvent({ ...newEvent, regionName: e.target.value })}
+                                    placeholder="Например: Московская область"
+                                  />
+                                </div>
                               ) : (
                                 <div className="space-y-2">
                                   <Label htmlFor="location">Место проведения</Label>
@@ -707,6 +1033,27 @@ const Index = () => {
                                   />
                                 </div>
                               )}
+                              <div className="space-y-2">
+                                <Label htmlFor="responsiblePerson">Ответственный</Label>
+                                <Select
+                                  value={newEvent.responsiblePersonId ? String(newEvent.responsiblePersonId) : 'none'}
+                                  onValueChange={(value) =>
+                                    setNewEvent({ ...newEvent, responsiblePersonId: value === 'none' ? undefined : parseInt(value) })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Выберите ответственного" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">Не назначен</SelectItem>
+                                    {responsiblePersons.map((person) => (
+                                      <SelectItem key={person.id} value={String(person.id)}>
+                                        {person.name} ({person.position})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                               <div className="space-y-2">
                                 <Label htmlFor="description">Описание</Label>
                                 <Textarea
@@ -800,6 +1147,7 @@ const Index = () => {
                           <SelectItem value="meeting">Встреча</SelectItem>
                           <SelectItem value="visit">Поездка</SelectItem>
                           <SelectItem value="vcs">ВКС</SelectItem>
+                          <SelectItem value="regional-trip">Выезд в регион</SelectItem>
                           <SelectItem value="other">Другое</SelectItem>
                         </SelectContent>
                       </Select>
@@ -837,15 +1185,24 @@ const Index = () => {
                               <Badge variant="outline">
                                 {groupedEvents[dateStr].length} мероприятий
                               </Badge>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => exportDayToPDF(dateStr)}
-                                className="shadow-sm"
-                              >
-                                <Icon name="FileDown" size={14} className="mr-1" />
-                                PDF
-                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="outline" size="sm" className="shadow-sm">
+                                    <Icon name="Download" size={14} className="mr-1" />
+                                    Экспорт
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                  <DropdownMenuItem onClick={() => exportDayToPDF(dateStr)}>
+                                    <Icon name="FileDown" size={14} className="mr-2" />
+                                    PDF
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => printDay(dateStr)}>
+                                    <Icon name="Printer" size={14} className="mr-2" />
+                                    Печать
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                             <div className="grid gap-3">
                               {groupedEvents[dateStr].map((event) => (
@@ -894,6 +1251,11 @@ const Index = () => {
                                                       Подключиться к ВКС
                                                     </a>
                                                   </div>
+                                                ) : event.type === 'regional-trip' ? (
+                                                  <div className="flex items-center gap-1">
+                                                    <Icon name="Plane" size={14} />
+                                                    <span className="truncate">{event.regionName || 'Регион'}</span>
+                                                  </div>
                                                 ) : (
                                                   <div className="flex items-center gap-1">
                                                     <Icon name="MapPin" size={14} />
@@ -929,6 +1291,12 @@ const Index = () => {
                                               <Badge variant="outline" className="flex items-center gap-1">
                                                 <Icon name="Bell" size={12} />
                                                 {event.reminderMinutes} мин
+                                              </Badge>
+                                            )}
+                                            {event.responsiblePersonId && responsiblePersons.find(p => p.id === event.responsiblePersonId) && (
+                                              <Badge variant="outline" className="flex items-center gap-1">
+                                                <Icon name="User" size={12} />
+                                                {responsiblePersons.find(p => p.id === event.responsiblePersonId)?.name.split(' ')[0]}
                                               </Badge>
                                             )}
                                           </div>
@@ -1032,6 +1400,11 @@ const Index = () => {
                                                   <div className="flex items-center gap-1">
                                                     <Icon name="Video" size={14} />
                                                     <span className="truncate">ВКС</span>
+                                                  </div>
+                                                ) : event.type === 'regional-trip' ? (
+                                                  <div className="flex items-center gap-1">
+                                                    <Icon name="Plane" size={14} />
+                                                    <span className="truncate">{event.regionName || 'Регион'}</span>
                                                   </div>
                                                 ) : (
                                                   <div className="flex items-center gap-1">
@@ -1199,6 +1572,7 @@ const Index = () => {
                     <SelectItem value="meeting">Встреча</SelectItem>
                     <SelectItem value="visit">Поездка</SelectItem>
                     <SelectItem value="vcs">ВКС</SelectItem>
+                    <SelectItem value="regional-trip">Выезд в регион</SelectItem>
                     <SelectItem value="other">Другое</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1243,6 +1617,16 @@ const Index = () => {
                   placeholder="Введите ссылку на видеоконференцсвязь"
                 />
               </div>
+            ) : editEvent.type === 'regional-trip' ? (
+              <div className="space-y-2">
+                <Label htmlFor="edit-regionName">Название региона</Label>
+                <Input
+                  id="edit-regionName"
+                  value={editEvent.regionName}
+                  onChange={(e) => setEditEvent({ ...editEvent, regionName: e.target.value })}
+                  placeholder="Например: Московская область"
+                />
+              </div>
             ) : (
               <div className="space-y-2">
                 <Label htmlFor="edit-location">Место проведения</Label>
@@ -1254,6 +1638,27 @@ const Index = () => {
                 />
               </div>
             )}
+            <div className="space-y-2">
+              <Label htmlFor="edit-responsiblePerson">Ответственный</Label>
+              <Select
+                value={editEvent.responsiblePersonId ? String(editEvent.responsiblePersonId) : 'none'}
+                onValueChange={(value) =>
+                  setEditEvent({ ...editEvent, responsiblePersonId: value === 'none' ? undefined : parseInt(value) })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите ответственного" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Не назначен</SelectItem>
+                  {responsiblePersons.map((person) => (
+                    <SelectItem key={person.id} value={String(person.id)}>
+                      {person.name} ({person.position})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="edit-description">Описание</Label>
               <Textarea
@@ -1361,12 +1766,36 @@ const Index = () => {
                     </a>
                   </div>
                 </div>
+              ) : selectedEvent.type === 'regional-trip' ? (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Регион поездки</Label>
+                  <div className="flex items-center gap-2">
+                    <Icon name="Plane" size={16} className="text-primary" />
+                    <p className="font-semibold">{selectedEvent.regionName}</p>
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">Место проведения</Label>
                   <div className="flex items-center gap-2">
                     <Icon name="MapPin" size={16} className="text-primary" />
                     <p className="font-semibold">{selectedEvent.location}</p>
+                  </div>
+                </div>
+              )}
+              {selectedEvent.responsiblePersonId && responsiblePersons.find(p => p.id === selectedEvent.responsiblePersonId) && (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Ответственный</Label>
+                  <div className="flex items-center gap-2">
+                    <Icon name="User" size={16} className="text-primary" />
+                    <div>
+                      <p className="font-semibold">
+                        {responsiblePersons.find(p => p.id === selectedEvent.responsiblePersonId)?.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {responsiblePersons.find(p => p.id === selectedEvent.responsiblePersonId)?.position}
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}
