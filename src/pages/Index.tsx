@@ -34,6 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ScheduleEvent {
   id: number;
@@ -47,6 +48,7 @@ interface ScheduleEvent {
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   reminder?: boolean;
   reminderMinutes?: number;
+  archived?: boolean;
 }
 
 const Index = () => {
@@ -56,6 +58,10 @@ const Index = () => {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
+  const [filterType, setFilterType] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
+  
   const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([
     {
       id: 1,
@@ -69,6 +75,7 @@ const Index = () => {
       status: 'in-progress',
       reminder: true,
       reminderMinutes: 30,
+      archived: false,
     },
     {
       id: 2,
@@ -82,6 +89,7 @@ const Index = () => {
       status: 'scheduled',
       reminder: true,
       reminderMinutes: 15,
+      archived: false,
     },
     {
       id: 3,
@@ -94,6 +102,7 @@ const Index = () => {
       description: 'Вопросы благоустройства района',
       status: 'scheduled',
       reminder: false,
+      archived: false,
     },
     {
       id: 4,
@@ -107,6 +116,7 @@ const Index = () => {
       status: 'scheduled',
       reminder: true,
       reminderMinutes: 60,
+      archived: false,
     },
     {
       id: 5,
@@ -119,6 +129,7 @@ const Index = () => {
       description: 'Планирование работы на неделю',
       status: 'scheduled',
       reminder: false,
+      archived: false,
     },
     {
       id: 6,
@@ -132,6 +143,7 @@ const Index = () => {
       status: 'scheduled',
       reminder: true,
       reminderMinutes: 30,
+      archived: false,
     },
     {
       id: 7,
@@ -144,6 +156,20 @@ const Index = () => {
       description: 'Обсуждение стратегии на следующую неделю',
       status: 'scheduled',
       reminder: false,
+      archived: false,
+    },
+    {
+      id: 8,
+      date: '25.09.2025',
+      timeStart: '10:00',
+      timeEnd: '12:00',
+      title: 'Встреча с министром образования',
+      type: 'meeting',
+      location: 'Министерство образования',
+      description: 'Обсуждение реформы школьного образования',
+      status: 'completed',
+      reminder: false,
+      archived: true,
     },
   ]);
 
@@ -158,6 +184,7 @@ const Index = () => {
     status: 'scheduled',
     reminder: false,
     reminderMinutes: 15,
+    archived: false,
   });
 
   const [editEvent, setEditEvent] = useState<Partial<ScheduleEvent>>({});
@@ -197,7 +224,7 @@ const Index = () => {
     const interval = setInterval(() => {
       const now = new Date();
       scheduleEvents.forEach((event) => {
-        if (event.reminder && event.reminderMinutes) {
+        if (event.reminder && event.reminderMinutes && !event.archived) {
           const [day, month, year] = event.date.split('.');
           const [hours, minutes] = event.timeStart.split(':');
           const eventTime = new Date(
@@ -224,13 +251,20 @@ const Index = () => {
 
   const filteredEvents = useMemo(() => {
     return scheduleEvents.filter((event) => {
+      const isArchived = activeTab === 'archive';
+      if (event.archived !== isArchived) return false;
+
       const matchesSearch =
         event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         event.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
         event.description.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesSearch;
+
+      const matchesType = filterType === 'all' || event.type === filterType;
+      const matchesStatus = filterStatus === 'all' || event.status === filterStatus;
+
+      return matchesSearch && matchesType && matchesStatus;
     });
-  }, [scheduleEvents, searchQuery]);
+  }, [scheduleEvents, searchQuery, filterType, filterStatus, activeTab]);
 
   const groupedEvents = useMemo(() => {
     const groups: { [key: string]: ScheduleEvent[] } = {};
@@ -264,7 +298,7 @@ const Index = () => {
     if (newEvent.title && newEvent.date && newEvent.timeStart && newEvent.timeEnd) {
       const [year, month, day] = newEvent.date!.split('-');
       const formattedDate = `${day}.${month}.${year}`;
-      
+
       const event: ScheduleEvent = {
         id: Math.max(...scheduleEvents.map((e) => e.id), 0) + 1,
         date: formattedDate,
@@ -277,6 +311,7 @@ const Index = () => {
         status: 'scheduled',
         reminder: newEvent.reminder || false,
         reminderMinutes: newEvent.reminderMinutes || 15,
+        archived: false,
       };
       setScheduleEvents([...scheduleEvents, event]);
       setIsAddDialogOpen(false);
@@ -291,6 +326,7 @@ const Index = () => {
         status: 'scheduled',
         reminder: false,
         reminderMinutes: 15,
+        archived: false,
       });
       toast.success('Мероприятие добавлено в график');
     }
@@ -333,10 +369,26 @@ const Index = () => {
     toast.success('Мероприятие удалено из графика');
   };
 
+  const handleArchiveEvent = (id: number) => {
+    const updatedEvents = scheduleEvents.map((event) =>
+      event.id === id ? { ...event, archived: true } : event
+    );
+    setScheduleEvents(updatedEvents);
+    toast.success('Мероприятие перемещено в архив');
+  };
+
+  const handleUnarchiveEvent = (id: number) => {
+    const updatedEvents = scheduleEvents.map((event) =>
+      event.id === id ? { ...event, archived: false } : event
+    );
+    setScheduleEvents(updatedEvents);
+    toast.success('Мероприятие восстановлено из архива');
+  };
+
   const openEditDialog = (event: ScheduleEvent) => {
     const [day, month, year] = event.date.split('.');
     const isoDate = `${year}-${month}-${day}`;
-    
+
     setEditEvent({
       ...event,
       date: isoDate,
@@ -349,16 +401,26 @@ const Index = () => {
     setIsViewDialogOpen(true);
   };
 
-  const exportToPDF = () => {
-    const doc = new jsPDF();
+  const utf8Encode = (text: string): string => {
+    return unescape(encodeURIComponent(text));
+  };
 
+  const exportToPDF = (events?: ScheduleEvent[], dateStr?: string) => {
+    const doc = new jsPDF();
+    const eventsToExport = events || scheduleEvents.filter(e => !e.archived);
+
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(18);
-    doc.text('График работы депутата Государственной Думы РФ', 14, 20);
+    
+    const title = dateStr 
+      ? `Grafik raboty deputata na ${dateStr}`
+      : 'Grafik raboty deputata Gosudarstvennoj Dumy RF';
+    doc.text(title, 14, 20);
 
     doc.setFontSize(10);
-    doc.text(`Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`, 14, 28);
+    doc.text(`Data formirovanija: ${new Date().toLocaleDateString('ru-RU')}`, 14, 28);
 
-    const tableData = scheduleEvents.map((event) => [
+    const tableData = eventsToExport.map((event) => [
       event.date,
       `${event.timeStart} - ${event.timeEnd}`,
       event.title,
@@ -369,7 +431,7 @@ const Index = () => {
 
     autoTable(doc, {
       startY: 35,
-      head: [['Дата', 'Время', 'Мероприятие', 'Тип', 'Место', 'Статус']],
+      head: [['Data', 'Vremja', 'Meroprijatie', 'Tip', 'Mesto', 'Status']],
       body: tableData,
       styles: {
         font: 'helvetica',
@@ -391,19 +453,28 @@ const Index = () => {
       doc.setPage(i);
       doc.setFontSize(8);
       doc.text(
-        `Страница ${i} из ${pageCount}`,
+        `Stranica ${i} iz ${pageCount}`,
         doc.internal.pageSize.getWidth() / 2,
         doc.internal.pageSize.getHeight() - 10,
         { align: 'center' }
       );
     }
 
-    doc.save(`График_работы_${new Date().toLocaleDateString('ru-RU')}.pdf`);
+    const filename = dateStr 
+      ? `Grafik_${dateStr.replace(/[^0-9]/g, '_')}.pdf`
+      : `Grafik_raboty_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '_')}.pdf`;
+    
+    doc.save(filename);
     toast.success('График экспортирован в PDF');
   };
 
+  const exportDayToPDF = (dateStr: string) => {
+    const dayEvents = scheduleEvents.filter(e => e.date === dateStr && !e.archived);
+    exportToPDF(dayEvents, dateStr);
+  };
+
   const upcomingReminders = scheduleEvents
-    .filter((event) => event.reminder && event.status === 'scheduled')
+    .filter((event) => event.reminder && event.status === 'scheduled' && !event.archived)
     .sort((a, b) => {
       const [dayA, monthA, yearA] = a.date.split('.');
       const [dayB, monthB, yearB] = b.date.split('.');
@@ -469,303 +540,472 @@ const Index = () => {
       <div className="container mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-3 space-y-6">
-            <Card className="shadow-lg border-t-4 border-t-primary">
-              <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <CardTitle className="flex items-center gap-2">
-                    <Icon name="Calendar" size={22} className="text-primary" />
-                    <span className="text-xl">График работы депутата</span>
-                  </CardTitle>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={exportToPDF} className="shadow-sm">
-                      <Icon name="FileDown" size={16} className="mr-2" />
-                      Экспорт в PDF
-                    </Button>
-                    <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button className="shadow-sm">
-                          <Icon name="Plus" size={16} className="mr-2" />
-                          Добавить мероприятие
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'active' | 'archive')}>
+              <Card className="shadow-lg border-t-4 border-t-primary">
+                <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <CardTitle className="flex items-center gap-2">
+                        <Icon name="Calendar" size={22} className="text-primary" />
+                        <span className="text-xl">График работы депутата</span>
+                      </CardTitle>
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => exportToPDF()} className="shadow-sm">
+                          <Icon name="FileDown" size={16} className="mr-2" />
+                          Экспорт в PDF
                         </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Добавить мероприятие в график</DialogTitle>
-                          <DialogDescription>
-                            Заполните информацию о новом мероприятии в графике работы
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="date">Дата</Label>
-                              <Input
-                                id="date"
-                                type="date"
-                                value={newEvent.date}
-                                onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
-                              />
+                        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button className="shadow-sm">
+                              <Icon name="Plus" size={16} className="mr-2" />
+                              Добавить мероприятие
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>Добавить мероприятие в график</DialogTitle>
+                              <DialogDescription>
+                                Заполните информацию о новом мероприятии в графике работы
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="date">Дата</Label>
+                                  <Input
+                                    id="date"
+                                    type="date"
+                                    value={newEvent.date}
+                                    onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="type">Тип мероприятия</Label>
+                                  <Select
+                                    value={newEvent.type}
+                                    onValueChange={(value) =>
+                                      setNewEvent({ ...newEvent, type: value as ScheduleEvent['type'] })
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="session">Заседание</SelectItem>
+                                      <SelectItem value="committee">Комитет</SelectItem>
+                                      <SelectItem value="meeting">Встреча</SelectItem>
+                                      <SelectItem value="visit">Поездка</SelectItem>
+                                      <SelectItem value="other">Другое</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="timeStart">Время начала</Label>
+                                  <Input
+                                    id="timeStart"
+                                    type="time"
+                                    value={newEvent.timeStart}
+                                    onChange={(e) => setNewEvent({ ...newEvent, timeStart: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="timeEnd">Время окончания</Label>
+                                  <Input
+                                    id="timeEnd"
+                                    type="time"
+                                    value={newEvent.timeEnd}
+                                    onChange={(e) => setNewEvent({ ...newEvent, timeEnd: e.target.value })}
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="title">Название</Label>
+                                <Input
+                                  id="title"
+                                  value={newEvent.title}
+                                  onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                                  placeholder="Введите название мероприятия"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="location">Место проведения</Label>
+                                <Input
+                                  id="location"
+                                  value={newEvent.location}
+                                  onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
+                                  placeholder="Введите место проведения"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="description">Описание</Label>
+                                <Textarea
+                                  id="description"
+                                  value={newEvent.description}
+                                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                                  placeholder="Введите описание мероприятия"
+                                  rows={3}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between p-4 border rounded-lg">
+                                <div className="space-y-1">
+                                  <Label htmlFor="reminder">Напоминание</Label>
+                                  <p className="text-sm text-muted-foreground">
+                                    Получать уведомление перед мероприятием
+                                  </p>
+                                </div>
+                                <Switch
+                                  id="reminder"
+                                  checked={newEvent.reminder}
+                                  onCheckedChange={(checked) => setNewEvent({ ...newEvent, reminder: checked })}
+                                />
+                              </div>
+                              {newEvent.reminder && (
+                                <div className="space-y-2">
+                                  <Label htmlFor="reminderMinutes">За сколько минут напомнить</Label>
+                                  <Select
+                                    value={String(newEvent.reminderMinutes)}
+                                    onValueChange={(value) =>
+                                      setNewEvent({ ...newEvent, reminderMinutes: parseInt(value) })
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="5">За 5 минут</SelectItem>
+                                      <SelectItem value="15">За 15 минут</SelectItem>
+                                      <SelectItem value="30">За 30 минут</SelectItem>
+                                      <SelectItem value="60">За 1 час</SelectItem>
+                                      <SelectItem value="120">За 2 часа</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )}
                             </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="type">Тип мероприятия</Label>
-                              <Select
-                                value={newEvent.type}
-                                onValueChange={(value) =>
-                                  setNewEvent({ ...newEvent, type: value as ScheduleEvent['type'] })
-                                }
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                                Отмена
+                              </Button>
+                              <Button onClick={handleAddEvent}>Добавить</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                    
+                    <TabsList className="grid w-full grid-cols-2 max-w-md">
+                      <TabsTrigger value="active">
+                        <Icon name="Calendar" size={16} className="mr-2" />
+                        Активные
+                      </TabsTrigger>
+                      <TabsTrigger value="archive">
+                        <Icon name="Archive" size={16} className="mr-2" />
+                        Архив
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="relative">
+                        <Icon
+                          name="Search"
+                          size={18}
+                          className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
+                        />
+                        <Input
+                          placeholder="Поиск..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10 bg-white shadow-sm"
+                        />
+                      </div>
+                      <Select value={filterType} onValueChange={setFilterType}>
+                        <SelectTrigger className="bg-white shadow-sm">
+                          <SelectValue placeholder="Тип" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Все типы</SelectItem>
+                          <SelectItem value="session">Заседание</SelectItem>
+                          <SelectItem value="committee">Комитет</SelectItem>
+                          <SelectItem value="meeting">Встреча</SelectItem>
+                          <SelectItem value="visit">Поездка</SelectItem>
+                          <SelectItem value="other">Другое</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="bg-white shadow-sm">
+                          <SelectValue placeholder="Статус" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Все статусы</SelectItem>
+                          <SelectItem value="scheduled">Запланировано</SelectItem>
+                          <SelectItem value="in-progress">Идёт сейчас</SelectItem>
+                          <SelectItem value="completed">Завершено</SelectItem>
+                          <SelectItem value="cancelled">Отменено</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardHeader>
+                
+                <TabsContent value="active" className="m-0">
+                  <CardContent className="p-6">
+                    {sortedDates.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Icon name="CalendarX" size={48} className="mx-auto mb-3 opacity-50" />
+                        <p className="text-lg font-medium">Мероприятия не найдены</p>
+                        <p className="text-sm">Попробуйте изменить параметры поиска</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-8">
+                        {sortedDates.map((dateStr) => (
+                          <div key={dateStr} className="space-y-3">
+                            <div className="flex items-center gap-3 pb-2 border-b-2 border-primary/20">
+                              <Icon name="CalendarDays" size={20} className="text-primary" />
+                              <h3 className="text-lg font-bold text-primary flex-1">{formatDateHeader(dateStr)}</h3>
+                              <Badge variant="outline">
+                                {groupedEvents[dateStr].length} мероприятий
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => exportDayToPDF(dateStr)}
+                                className="shadow-sm"
                               >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="session">Заседание</SelectItem>
-                                  <SelectItem value="committee">Комитет</SelectItem>
-                                  <SelectItem value="meeting">Встреча</SelectItem>
-                                  <SelectItem value="visit">Поездка</SelectItem>
-                                  <SelectItem value="other">Другое</SelectItem>
-                                </SelectContent>
-                              </Select>
+                                <Icon name="FileDown" size={14} className="mr-1" />
+                                PDF
+                              </Button>
                             </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="timeStart">Время начала</Label>
-                              <Input
-                                id="timeStart"
-                                type="time"
-                                value={newEvent.timeStart}
-                                onChange={(e) => setNewEvent({ ...newEvent, timeStart: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="timeEnd">Время окончания</Label>
-                              <Input
-                                id="timeEnd"
-                                type="time"
-                                value={newEvent.timeEnd}
-                                onChange={(e) => setNewEvent({ ...newEvent, timeEnd: e.target.value })}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="title">Название</Label>
-                            <Input
-                              id="title"
-                              value={newEvent.title}
-                              onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                              placeholder="Введите название мероприятия"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="location">Место проведения</Label>
-                            <Input
-                              id="location"
-                              value={newEvent.location}
-                              onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
-                              placeholder="Введите место проведения"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="description">Описание</Label>
-                            <Textarea
-                              id="description"
-                              value={newEvent.description}
-                              onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
-                              placeholder="Введите описание мероприятия"
-                              rows={3}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="space-y-1">
-                              <Label htmlFor="reminder">Напоминание</Label>
-                              <p className="text-sm text-muted-foreground">
-                                Получать уведомление перед мероприятием
-                              </p>
-                            </div>
-                            <Switch
-                              id="reminder"
-                              checked={newEvent.reminder}
-                              onCheckedChange={(checked) => setNewEvent({ ...newEvent, reminder: checked })}
-                            />
-                          </div>
-                          {newEvent.reminder && (
-                            <div className="space-y-2">
-                              <Label htmlFor="reminderMinutes">За сколько минут напомнить</Label>
-                              <Select
-                                value={String(newEvent.reminderMinutes)}
-                                onValueChange={(value) =>
-                                  setNewEvent({ ...newEvent, reminderMinutes: parseInt(value) })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="5">За 5 минут</SelectItem>
-                                  <SelectItem value="15">За 15 минут</SelectItem>
-                                  <SelectItem value="30">За 30 минут</SelectItem>
-                                  <SelectItem value="60">За 1 час</SelectItem>
-                                  <SelectItem value="120">За 2 часа</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                            Отмена
-                          </Button>
-                          <Button onClick={handleAddEvent}>Добавить</Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="relative">
-                    <Icon
-                      name="Search"
-                      size={18}
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
-                    />
-                    <Input
-                      placeholder="Поиск по названию, месту или описанию..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 bg-white shadow-sm"
-                    />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6">
-                {sortedDates.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Icon name="CalendarX" size={48} className="mx-auto mb-3 opacity-50" />
-                    <p className="text-lg font-medium">Мероприятия не найдены</p>
-                    <p className="text-sm">Попробуйте изменить параметры поиска</p>
-                  </div>
-                ) : (
-                  <div className="space-y-8">
-                    {sortedDates.map((dateStr) => (
-                      <div key={dateStr} className="space-y-3">
-                        <div className="flex items-center gap-3 pb-2 border-b-2 border-primary/20">
-                          <Icon name="CalendarDays" size={20} className="text-primary" />
-                          <h3 className="text-lg font-bold text-primary">{formatDateHeader(dateStr)}</h3>
-                          <Badge variant="outline" className="ml-auto">
-                            {groupedEvents[dateStr].length} мероприятий
-                          </Badge>
-                        </div>
-                        <div className="grid gap-3">
-                          {groupedEvents[dateStr].map((event) => (
-                            <Card
-                              key={event.id}
-                              className={`hover:shadow-md transition-all border-l-4 cursor-pointer ${
-                                event.status === 'in-progress'
-                                  ? 'border-l-green-500 bg-green-50/50'
-                                  : event.status === 'completed'
-                                  ? 'border-l-gray-400 bg-gray-50/50'
-                                  : event.status === 'cancelled'
-                                  ? 'border-l-red-400 bg-red-50/50'
-                                  : 'border-l-blue-500'
-                              }`}
-                              onClick={() => openViewDialog(event)}
-                            >
-                              <CardContent className="p-4">
-                                <div className="flex items-start justify-between gap-4">
-                                  <div className="flex items-start gap-4 flex-1">
-                                    <div className={`p-3 rounded-lg ${typeColors[event.type]} border shrink-0`}>
-                                      <Icon name={typeIcons[event.type]} size={24} />
-                                    </div>
-                                    <div className="flex-1 space-y-2 min-w-0">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                          <h4 className="font-bold text-lg leading-tight mb-1 truncate">
-                                            {event.title}
-                                          </h4>
-                                          <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                                            <div className="flex items-center gap-1">
-                                              <Icon name="Clock" size={14} />
-                                              <span className="font-medium">
-                                                {event.timeStart} — {event.timeEnd}
-                                              </span>
+                            <div className="grid gap-3">
+                              {groupedEvents[dateStr].map((event) => (
+                                <Card
+                                  key={event.id}
+                                  className={`hover:shadow-md transition-all border-l-4 cursor-pointer ${
+                                    event.status === 'in-progress'
+                                      ? 'border-l-green-500 bg-green-50/50'
+                                      : event.status === 'completed'
+                                      ? 'border-l-gray-400 bg-gray-50/50'
+                                      : event.status === 'cancelled'
+                                      ? 'border-l-red-400 bg-red-50/50'
+                                      : 'border-l-blue-500'
+                                  }`}
+                                  onClick={() => openViewDialog(event)}
+                                >
+                                  <CardContent className="p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="flex items-start gap-4 flex-1">
+                                        <div className={`p-3 rounded-lg ${typeColors[event.type]} border shrink-0`}>
+                                          <Icon name={typeIcons[event.type]} size={24} />
+                                        </div>
+                                        <div className="flex-1 space-y-2 min-w-0">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                              <h4 className="font-bold text-lg leading-tight mb-1 truncate">
+                                                {event.title}
+                                              </h4>
+                                              <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                                                <div className="flex items-center gap-1">
+                                                  <Icon name="Clock" size={14} />
+                                                  <span className="font-medium">
+                                                    {event.timeStart} — {event.timeEnd}
+                                                  </span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                  <Icon name="MapPin" size={14} />
+                                                  <span className="truncate">{event.location}</span>
+                                                </div>
+                                              </div>
                                             </div>
-                                            <div className="flex items-center gap-1">
-                                              <Icon name="MapPin" size={14} />
-                                              <span className="truncate">{event.location}</span>
-                                            </div>
+                                          </div>
+                                          {event.description && (
+                                            <p className="text-sm text-muted-foreground line-clamp-2">
+                                              {event.description}
+                                            </p>
+                                          )}
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <Badge variant="outline" className={typeColors[event.type]}>
+                                              {typeLabels[event.type]}
+                                            </Badge>
+                                            <Badge
+                                              variant={
+                                                event.status === 'in-progress'
+                                                  ? 'default'
+                                                  : event.status === 'completed'
+                                                  ? 'secondary'
+                                                  : event.status === 'cancelled'
+                                                  ? 'destructive'
+                                                  : 'outline'
+                                              }
+                                            >
+                                              {statusLabels[event.status]}
+                                            </Badge>
+                                            {event.reminder && (
+                                              <Badge variant="outline" className="flex items-center gap-1">
+                                                <Icon name="Bell" size={12} />
+                                                {event.reminderMinutes} мин
+                                              </Badge>
+                                            )}
                                           </div>
                                         </div>
                                       </div>
-                                      {event.description && (
-                                        <p className="text-sm text-muted-foreground line-clamp-2">
-                                          {event.description}
-                                        </p>
-                                      )}
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <Badge variant="outline" className={typeColors[event.type]}>
-                                          {typeLabels[event.type]}
-                                        </Badge>
-                                        <Badge
-                                          variant={
-                                            event.status === 'in-progress'
-                                              ? 'default'
-                                              : event.status === 'completed'
-                                              ? 'secondary'
-                                              : event.status === 'cancelled'
-                                              ? 'destructive'
-                                              : 'outline'
-                                          }
-                                        >
-                                          {statusLabels[event.status]}
-                                        </Badge>
-                                        {event.reminder && (
-                                          <Badge variant="outline" className="flex items-center gap-1">
-                                            <Icon name="Bell" size={12} />
-                                            {event.reminderMinutes} мин
-                                          </Badge>
-                                        )}
-                                      </div>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                          <Button variant="ghost" size="icon" className="shrink-0">
+                                            <Icon name="MoreVertical" size={18} />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openEditDialog(event);
+                                            }}
+                                          >
+                                            <Icon name="Pencil" size={16} className="mr-2" />
+                                            Редактировать
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleArchiveEvent(event.id);
+                                            }}
+                                          >
+                                            <Icon name="Archive" size={16} className="mr-2" />
+                                            В архив
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteEvent(event.id);
+                                            }}
+                                            className="text-destructive focus:text-destructive"
+                                          >
+                                            <Icon name="Trash2" size={16} className="mr-2" />
+                                            Удалить
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
                                     </div>
-                                  </div>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                      <Button variant="ghost" size="icon" className="shrink-0">
-                                        <Icon name="MoreVertical" size={18} />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          openEditDialog(event);
-                                        }}
-                                      >
-                                        <Icon name="Pencil" size={16} className="mr-2" />
-                                        Редактировать
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteEvent(event.id);
-                                        }}
-                                        className="text-destructive focus:text-destructive"
-                                      >
-                                        <Icon name="Trash2" size={16} className="mr-2" />
-                                        Удалить
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    )}
+                  </CardContent>
+                </TabsContent>
+
+                <TabsContent value="archive" className="m-0">
+                  <CardContent className="p-6">
+                    {sortedDates.length === 0 ? (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Icon name="Archive" size={48} className="mx-auto mb-3 opacity-50" />
+                        <p className="text-lg font-medium">Архив пуст</p>
+                        <p className="text-sm">Завершённые мероприятия будут отображаться здесь</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-8">
+                        {sortedDates.map((dateStr) => (
+                          <div key={dateStr} className="space-y-3">
+                            <div className="flex items-center gap-3 pb-2 border-b-2 border-gray-300">
+                              <Icon name="CalendarDays" size={20} className="text-gray-600" />
+                              <h3 className="text-lg font-bold text-gray-700 flex-1">{formatDateHeader(dateStr)}</h3>
+                              <Badge variant="outline">
+                                {groupedEvents[dateStr].length} мероприятий
+                              </Badge>
+                            </div>
+                            <div className="grid gap-3">
+                              {groupedEvents[dateStr].map((event) => (
+                                <Card
+                                  key={event.id}
+                                  className="hover:shadow-md transition-all border-l-4 border-l-gray-400 bg-gray-50/30 cursor-pointer"
+                                  onClick={() => openViewDialog(event)}
+                                >
+                                  <CardContent className="p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="flex items-start gap-4 flex-1">
+                                        <div className={`p-3 rounded-lg ${typeColors[event.type]} border shrink-0 opacity-70`}>
+                                          <Icon name={typeIcons[event.type]} size={24} />
+                                        </div>
+                                        <div className="flex-1 space-y-2 min-w-0">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                              <h4 className="font-bold text-lg leading-tight mb-1 truncate text-gray-700">
+                                                {event.title}
+                                              </h4>
+                                              <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+                                                <div className="flex items-center gap-1">
+                                                  <Icon name="Clock" size={14} />
+                                                  <span className="font-medium">
+                                                    {event.timeStart} — {event.timeEnd}
+                                                  </span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                  <Icon name="MapPin" size={14} />
+                                                  <span className="truncate">{event.location}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                          {event.description && (
+                                            <p className="text-sm text-muted-foreground line-clamp-2">
+                                              {event.description}
+                                            </p>
+                                          )}
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <Badge variant="outline" className={typeColors[event.type]}>
+                                              {typeLabels[event.type]}
+                                            </Badge>
+                                            <Badge variant="secondary">
+                                              {statusLabels[event.status]}
+                                            </Badge>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                          <Button variant="ghost" size="icon" className="shrink-0">
+                                            <Icon name="MoreVertical" size={18} />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleUnarchiveEvent(event.id);
+                                            }}
+                                          >
+                                            <Icon name="ArchiveRestore" size={16} className="mr-2" />
+                                            Восстановить
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteEvent(event.id);
+                                            }}
+                                            className="text-destructive focus:text-destructive"
+                                          >
+                                            <Icon name="Trash2" size={16} className="mr-2" />
+                                            Удалить
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </TabsContent>
+              </Card>
+            </Tabs>
           </div>
 
           <div className="space-y-6">
