@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScheduleEvent, ResponsiblePerson } from '@/types/schedule';
-import { exportToPDF, printSchedule } from '@/utils/pdfExport';
 import { EventFormDialog } from '@/components/schedule/EventFormDialog';
 import { EventViewDialog } from '@/components/schedule/EventViewDialog';
 import { ResponsiblePersonDialog } from '@/components/schedule/ResponsiblePersonDialog';
@@ -212,6 +211,30 @@ const Index = () => {
   });
 
   const [editEvent, setEditEvent] = useState<Partial<ScheduleEvent>>({});
+
+  const handleExportToPDF = async () => {
+    const eventsToExport = scheduleEvents.filter((e) => !e.archived);
+    const { exportToPDF } = await import('@/utils/pdfExport');
+    exportToPDF(eventsToExport, responsiblePersons);
+  };
+
+  const handlePrintSchedule = async () => {
+    const eventsToExport = scheduleEvents.filter((e) => !e.archived);
+    const { printSchedule } = await import('@/utils/pdfExport');
+    printSchedule(eventsToExport, responsiblePersons);
+  };
+
+  const exportDayToPDF = async (dateStr: string) => {
+    const dayEvents = scheduleEvents.filter((e) => e.date === dateStr && !e.archived);
+    const { exportToPDF } = await import('@/utils/pdfExport');
+    exportToPDF(dayEvents, responsiblePersons, dateStr);
+  };
+
+  const printDay = async (dateStr: string) => {
+    const dayEvents = scheduleEvents.filter((e) => e.date === dateStr && !e.archived);
+    const { printSchedule } = await import('@/utils/pdfExport');
+    printSchedule(dayEvents, responsiblePersons, dateStr);
+  };
 
   useEffect(() => {
     const updateStatuses = () => {
@@ -443,26 +466,6 @@ const Index = () => {
   const openViewDialog = (event: ScheduleEvent) => {
     setSelectedEvent(event);
     setIsViewDialogOpen(true);
-  };
-
-  const handleExportToPDF = () => {
-    const eventsToExport = scheduleEvents.filter((e) => !e.archived);
-    exportToPDF(eventsToExport, responsiblePersons);
-  };
-
-  const handlePrintSchedule = () => {
-    const eventsToExport = scheduleEvents.filter((e) => !e.archived);
-    printSchedule(eventsToExport, responsiblePersons);
-  };
-
-  const exportDayToPDF = (dateStr: string) => {
-    const dayEvents = scheduleEvents.filter((e) => e.date === dateStr && !e.archived);
-    exportToPDF(dayEvents, responsiblePersons, dateStr);
-  };
-
-  const printDay = (dateStr: string) => {
-    const dayEvents = scheduleEvents.filter((e) => e.date === dateStr && !e.archived);
-    printSchedule(dayEvents, responsiblePersons, dateStr);
   };
 
   const handleAddPerson = () => {
