@@ -28,6 +28,12 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface ScheduleEvent {
   id: number;
@@ -46,7 +52,10 @@ interface ScheduleEvent {
 const Index = () => {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([
     {
       id: 1,
@@ -151,6 +160,8 @@ const Index = () => {
     reminderMinutes: 15,
   });
 
+  const [editEvent, setEditEvent] = useState<Partial<ScheduleEvent>>({});
+
   const typeLabels = {
     session: 'Заседание',
     committee: 'Комитет',
@@ -251,9 +262,12 @@ const Index = () => {
 
   const handleAddEvent = () => {
     if (newEvent.title && newEvent.date && newEvent.timeStart && newEvent.timeEnd) {
+      const [year, month, day] = newEvent.date!.split('-');
+      const formattedDate = `${day}.${month}.${year}`;
+      
       const event: ScheduleEvent = {
         id: Math.max(...scheduleEvents.map((e) => e.id), 0) + 1,
-        date: newEvent.date!,
+        date: formattedDate,
         timeStart: newEvent.timeStart!,
         timeEnd: newEvent.timeEnd!,
         title: newEvent.title!,
@@ -282,9 +296,57 @@ const Index = () => {
     }
   };
 
+  const handleEditEvent = () => {
+    if (editEvent.id && editEvent.title && editEvent.date && editEvent.timeStart && editEvent.timeEnd) {
+      let formattedDate = editEvent.date!;
+      if (editEvent.date!.includes('-')) {
+        const [year, month, day] = editEvent.date!.split('-');
+        formattedDate = `${day}.${month}.${year}`;
+      }
+
+      const updatedEvents = scheduleEvents.map((event) =>
+        event.id === editEvent.id
+          ? {
+              ...event,
+              date: formattedDate,
+              timeStart: editEvent.timeStart!,
+              timeEnd: editEvent.timeEnd!,
+              title: editEvent.title!,
+              type: editEvent.type as ScheduleEvent['type'],
+              location: editEvent.location || '',
+              description: editEvent.description || '',
+              status: editEvent.status as ScheduleEvent['status'],
+              reminder: editEvent.reminder || false,
+              reminderMinutes: editEvent.reminderMinutes || 15,
+            }
+          : event
+      );
+      setScheduleEvents(updatedEvents);
+      setIsEditDialogOpen(false);
+      setEditEvent({});
+      toast.success('Мероприятие обновлено');
+    }
+  };
+
   const handleDeleteEvent = (id: number) => {
     setScheduleEvents(scheduleEvents.filter((event) => event.id !== id));
     toast.success('Мероприятие удалено из графика');
+  };
+
+  const openEditDialog = (event: ScheduleEvent) => {
+    const [day, month, year] = event.date.split('.');
+    const isoDate = `${year}-${month}-${day}`;
+    
+    setEditEvent({
+      ...event,
+      date: isoDate,
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const openViewDialog = (event: ScheduleEvent) => {
+    setSelectedEvent(event);
+    setIsViewDialogOpen(true);
   };
 
   const exportToPDF = () => {
@@ -426,7 +488,7 @@ const Index = () => {
                           Добавить мероприятие
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
+                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle>Добавить мероприятие в график</DialogTitle>
                           <DialogDescription>
@@ -597,7 +659,7 @@ const Index = () => {
                           {groupedEvents[dateStr].map((event) => (
                             <Card
                               key={event.id}
-                              className={`hover:shadow-md transition-all border-l-4 ${
+                              className={`hover:shadow-md transition-all border-l-4 cursor-pointer ${
                                 event.status === 'in-progress'
                                   ? 'border-l-green-500 bg-green-50/50'
                                   : event.status === 'completed'
@@ -606,22 +668,21 @@ const Index = () => {
                                   ? 'border-l-red-400 bg-red-50/50'
                                   : 'border-l-blue-500'
                               }`}
+                              onClick={() => openViewDialog(event)}
                             >
                               <CardContent className="p-4">
                                 <div className="flex items-start justify-between gap-4">
                                   <div className="flex items-start gap-4 flex-1">
-                                    <div
-                                      className={`p-3 rounded-lg ${typeColors[event.type]} border`}
-                                    >
-                                      <Icon name={typeIcons[event.type]} size={20} />
+                                    <div className={`p-3 rounded-lg ${typeColors[event.type]} border shrink-0`}>
+                                      <Icon name={typeIcons[event.type]} size={24} />
                                     </div>
-                                    <div className="flex-1 space-y-2">
+                                    <div className="flex-1 space-y-2 min-w-0">
                                       <div className="flex items-start justify-between gap-2">
-                                        <div>
-                                          <h4 className="font-bold text-lg leading-tight mb-1">
+                                        <div className="flex-1 min-w-0">
+                                          <h4 className="font-bold text-lg leading-tight mb-1 truncate">
                                             {event.title}
                                           </h4>
-                                          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                          <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                                             <div className="flex items-center gap-1">
                                               <Icon name="Clock" size={14} />
                                               <span className="font-medium">
@@ -630,13 +691,15 @@ const Index = () => {
                                             </div>
                                             <div className="flex items-center gap-1">
                                               <Icon name="MapPin" size={14} />
-                                              <span>{event.location}</span>
+                                              <span className="truncate">{event.location}</span>
                                             </div>
                                           </div>
                                         </div>
                                       </div>
                                       {event.description && (
-                                        <p className="text-sm text-muted-foreground">{event.description}</p>
+                                        <p className="text-sm text-muted-foreground line-clamp-2">
+                                          {event.description}
+                                        </p>
                                       )}
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <Badge variant="outline" className={typeColors[event.type]}>
@@ -658,20 +721,40 @@ const Index = () => {
                                         {event.reminder && (
                                           <Badge variant="outline" className="flex items-center gap-1">
                                             <Icon name="Bell" size={12} />
-                                            Напоминание за {event.reminderMinutes} мин
+                                            {event.reminderMinutes} мин
                                           </Badge>
                                         )}
                                       </div>
                                     </div>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleDeleteEvent(event.id)}
-                                    className="text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                                  >
-                                    <Icon name="Trash2" size={18} />
-                                  </Button>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                      <Button variant="ghost" size="icon" className="shrink-0">
+                                        <Icon name="MoreVertical" size={18} />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEditDialog(event);
+                                        }}
+                                      >
+                                        <Icon name="Pencil" size={16} className="mr-2" />
+                                        Редактировать
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteEvent(event.id);
+                                        }}
+                                        className="text-destructive focus:text-destructive"
+                                      >
+                                        <Icon name="Trash2" size={16} className="mr-2" />
+                                        Удалить
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </div>
                               </CardContent>
                             </Card>
@@ -716,7 +799,8 @@ const Index = () => {
                     {upcomingReminders.map((event) => (
                       <div
                         key={event.id}
-                        className="p-3 border rounded-lg hover:bg-muted/50 transition-colors bg-white shadow-sm"
+                        className="p-3 border rounded-lg hover:bg-muted/50 transition-colors bg-white shadow-sm cursor-pointer"
+                        onClick={() => openViewDialog(event)}
                       >
                         <div className="flex items-start justify-between mb-2">
                           <h4 className="font-semibold text-sm leading-tight pr-2">{event.title}</h4>
@@ -748,6 +832,241 @@ const Index = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Редактировать мероприятие</DialogTitle>
+            <DialogDescription>Измените информацию о мероприятии</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-date">Дата</Label>
+                <Input
+                  id="edit-date"
+                  type="date"
+                  value={editEvent.date}
+                  onChange={(e) => setEditEvent({ ...editEvent, date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-type">Тип мероприятия</Label>
+                <Select
+                  value={editEvent.type}
+                  onValueChange={(value) =>
+                    setEditEvent({ ...editEvent, type: value as ScheduleEvent['type'] })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="session">Заседание</SelectItem>
+                    <SelectItem value="committee">Комитет</SelectItem>
+                    <SelectItem value="meeting">Встреча</SelectItem>
+                    <SelectItem value="visit">Поездка</SelectItem>
+                    <SelectItem value="other">Другое</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-timeStart">Время начала</Label>
+                <Input
+                  id="edit-timeStart"
+                  type="time"
+                  value={editEvent.timeStart}
+                  onChange={(e) => setEditEvent({ ...editEvent, timeStart: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-timeEnd">Время окончания</Label>
+                <Input
+                  id="edit-timeEnd"
+                  type="time"
+                  value={editEvent.timeEnd}
+                  onChange={(e) => setEditEvent({ ...editEvent, timeEnd: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Название</Label>
+              <Input
+                id="edit-title"
+                value={editEvent.title}
+                onChange={(e) => setEditEvent({ ...editEvent, title: e.target.value })}
+                placeholder="Введите название мероприятия"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-location">Место проведения</Label>
+              <Input
+                id="edit-location"
+                value={editEvent.location}
+                onChange={(e) => setEditEvent({ ...editEvent, location: e.target.value })}
+                placeholder="Введите место проведения"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Описание</Label>
+              <Textarea
+                id="edit-description"
+                value={editEvent.description}
+                onChange={(e) => setEditEvent({ ...editEvent, description: e.target.value })}
+                placeholder="Введите описание мероприятия"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-status">Статус</Label>
+              <Select
+                value={editEvent.status}
+                onValueChange={(value) =>
+                  setEditEvent({ ...editEvent, status: value as ScheduleEvent['status'] })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="scheduled">Запланировано</SelectItem>
+                  <SelectItem value="in-progress">Идёт сейчас</SelectItem>
+                  <SelectItem value="completed">Завершено</SelectItem>
+                  <SelectItem value="cancelled">Отменено</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="space-y-1">
+                <Label htmlFor="edit-reminder">Напоминание</Label>
+                <p className="text-sm text-muted-foreground">Получать уведомление перед мероприятием</p>
+              </div>
+              <Switch
+                id="edit-reminder"
+                checked={editEvent.reminder}
+                onCheckedChange={(checked) => setEditEvent({ ...editEvent, reminder: checked })}
+              />
+            </div>
+            {editEvent.reminder && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-reminderMinutes">За сколько минут напомнить</Label>
+                <Select
+                  value={String(editEvent.reminderMinutes)}
+                  onValueChange={(value) =>
+                    setEditEvent({ ...editEvent, reminderMinutes: parseInt(value) })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">За 5 минут</SelectItem>
+                    <SelectItem value="15">За 15 минут</SelectItem>
+                    <SelectItem value="30">За 30 минут</SelectItem>
+                    <SelectItem value="60">За 1 час</SelectItem>
+                    <SelectItem value="120">За 2 часа</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleEditEvent}>Сохранить изменения</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">{selectedEvent?.title}</DialogTitle>
+            <DialogDescription>Подробная информация о мероприятии</DialogDescription>
+          </DialogHeader>
+          {selectedEvent && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Дата</Label>
+                  <p className="font-semibold">{formatDateHeader(selectedEvent.date)}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Время</Label>
+                  <p className="font-semibold">
+                    {selectedEvent.timeStart} — {selectedEvent.timeEnd}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Место проведения</Label>
+                <div className="flex items-center gap-2">
+                  <Icon name="MapPin" size={16} className="text-primary" />
+                  <p className="font-semibold">{selectedEvent.location}</p>
+                </div>
+              </div>
+              {selectedEvent.description && (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Описание</Label>
+                  <p className="text-sm">{selectedEvent.description}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Тип мероприятия</Label>
+                  <Badge className={typeColors[selectedEvent.type]}>
+                    <Icon name={typeIcons[selectedEvent.type]} size={14} className="mr-1" />
+                    {typeLabels[selectedEvent.type]}
+                  </Badge>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Статус</Label>
+                  <Badge
+                    variant={
+                      selectedEvent.status === 'in-progress'
+                        ? 'default'
+                        : selectedEvent.status === 'completed'
+                        ? 'secondary'
+                        : selectedEvent.status === 'cancelled'
+                        ? 'destructive'
+                        : 'outline'
+                    }
+                  >
+                    {statusLabels[selectedEvent.status]}
+                  </Badge>
+                </div>
+              </div>
+              {selectedEvent.reminder && (
+                <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <Icon name="Bell" size={16} className="text-orange-600" />
+                  <p className="text-sm font-medium text-orange-800">
+                    Напоминание за {selectedEvent.reminderMinutes} минут до начала
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Закрыть
+            </Button>
+            <Button
+              onClick={() => {
+                setIsViewDialogOpen(false);
+                if (selectedEvent) {
+                  openEditDialog(selectedEvent);
+                }
+              }}
+            >
+              <Icon name="Pencil" size={16} className="mr-2" />
+              Редактировать
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
