@@ -28,6 +28,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import 'jspdf-customfonts';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,13 +43,14 @@ interface ScheduleEvent {
   timeStart: string;
   timeEnd: string;
   title: string;
-  type: 'session' | 'committee' | 'meeting' | 'visit' | 'other';
+  type: 'session' | 'committee' | 'meeting' | 'visit' | 'vcs' | 'other';
   location: string;
   description: string;
   status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
   reminder?: boolean;
   reminderMinutes?: number;
   archived?: boolean;
+  vcsLink?: string;
 }
 
 const Index = () => {
@@ -171,6 +173,21 @@ const Index = () => {
       reminder: false,
       archived: true,
     },
+    {
+      id: 9,
+      date: '03.10.2025',
+      timeStart: '10:00',
+      timeEnd: '11:30',
+      title: 'Онлайн-совещание с региональными представителями',
+      type: 'vcs',
+      location: '',
+      description: 'Обсуждение региональных инициатив и законопроектов',
+      status: 'scheduled',
+      reminder: true,
+      reminderMinutes: 15,
+      archived: false,
+      vcsLink: 'https://meet.example.com/regional-meeting-2025',
+    },
   ]);
 
   const [newEvent, setNewEvent] = useState<Partial<ScheduleEvent>>({
@@ -194,6 +211,7 @@ const Index = () => {
     committee: 'Комитет',
     meeting: 'Встреча',
     visit: 'Поездка',
+    vcs: 'ВКС',
     other: 'Другое',
   };
 
@@ -202,6 +220,7 @@ const Index = () => {
     committee: 'Users',
     meeting: 'UserCheck',
     visit: 'MapPin',
+    vcs: 'Video',
     other: 'Calendar',
   };
 
@@ -217,34 +236,68 @@ const Index = () => {
     committee: 'bg-purple-500/10 text-purple-700 border-purple-200',
     meeting: 'bg-green-500/10 text-green-700 border-green-200',
     visit: 'bg-orange-500/10 text-orange-700 border-orange-200',
+    vcs: 'bg-cyan-500/10 text-cyan-700 border-cyan-200',
     other: 'bg-gray-500/10 text-gray-700 border-gray-200',
   };
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const updateStatuses = () => {
       const now = new Date();
-      scheduleEvents.forEach((event) => {
-        if (event.reminder && event.reminderMinutes && !event.archived) {
-          const [day, month, year] = event.date.split('.');
-          const [hours, minutes] = event.timeStart.split(':');
-          const eventTime = new Date(
-            parseInt(year),
-            parseInt(month) - 1,
-            parseInt(day),
-            parseInt(hours),
-            parseInt(minutes)
-          );
-          const reminderTime = new Date(eventTime.getTime() - event.reminderMinutes * 60000);
+      let hasChanges = false;
 
-          if (now >= reminderTime && now < eventTime) {
+      const updatedEvents = scheduleEvents.map((event) => {
+        if (event.archived || event.status === 'cancelled') return event;
+
+        const [day, month, year] = event.date.split('.');
+        const [startHours, startMinutes] = event.timeStart.split(':');
+        const [endHours, endMinutes] = event.timeEnd.split(':');
+        
+        const eventStart = new Date(
+          parseInt(year),
+          parseInt(month) - 1,
+          parseInt(day),
+          parseInt(startHours),
+          parseInt(startMinutes)
+        );
+        
+        const eventEnd = new Date(
+          parseInt(year),
+          parseInt(month) - 1,
+          parseInt(day),
+          parseInt(endHours),
+          parseInt(endMinutes)
+        );
+
+        let newStatus = event.status;
+
+        if (now >= eventEnd && event.status !== 'completed') {
+          newStatus = 'completed';
+          hasChanges = true;
+        } else if (now >= eventStart && now < eventEnd && event.status === 'scheduled') {
+          newStatus = 'in-progress';
+          hasChanges = true;
+        }
+
+        if (event.reminder && event.reminderMinutes && event.status === 'scheduled') {
+          const reminderTime = new Date(eventStart.getTime() - event.reminderMinutes * 60000);
+          if (now >= reminderTime && now < eventStart) {
             toast.info(`Напоминание: ${event.title}`, {
-              description: `Начало через ${event.reminderMinutes} мин. Место: ${event.location}`,
+              description: `Начало через ${event.reminderMinutes} мин. ${event.type === 'vcs' && event.vcsLink ? 'Ссылка: ' + event.vcsLink : 'Место: ' + event.location}`,
               duration: 10000,
             });
           }
         }
+
+        return newStatus !== event.status ? { ...event, status: newStatus } : event;
       });
-    }, 60000);
+
+      if (hasChanges) {
+        setScheduleEvents(updatedEvents);
+      }
+    };
+
+    updateStatuses();
+    const interval = setInterval(updateStatuses, 60000);
 
     return () => clearInterval(interval);
   }, [scheduleEvents]);
@@ -312,6 +365,7 @@ const Index = () => {
         reminder: newEvent.reminder || false,
         reminderMinutes: newEvent.reminderMinutes || 15,
         archived: false,
+        vcsLink: newEvent.vcsLink || '',
       };
       setScheduleEvents([...scheduleEvents, event]);
       setIsAddDialogOpen(false);
@@ -327,6 +381,7 @@ const Index = () => {
         reminder: false,
         reminderMinutes: 15,
         archived: false,
+        vcsLink: '',
       });
       toast.success('Мероприятие добавлено в график');
     }
@@ -354,6 +409,7 @@ const Index = () => {
               status: editEvent.status as ScheduleEvent['status'],
               reminder: editEvent.reminder || false,
               reminderMinutes: editEvent.reminderMinutes || 15,
+              vcsLink: editEvent.vcsLink || '',
             }
           : event
       );
@@ -413,25 +469,25 @@ const Index = () => {
     doc.setFontSize(18);
     
     const title = dateStr 
-      ? `Grafik raboty deputata na ${dateStr}`
-      : 'Grafik raboty deputata Gosudarstvennoj Dumy RF';
+      ? `График работы депутата на ${dateStr}`
+      : 'График работы депутата Государственной Думы РФ';
     doc.text(title, 14, 20);
 
     doc.setFontSize(10);
-    doc.text(`Data formirovanija: ${new Date().toLocaleDateString('ru-RU')}`, 14, 28);
+    doc.text(`Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`, 14, 28);
 
     const tableData = eventsToExport.map((event) => [
       event.date,
       `${event.timeStart} - ${event.timeEnd}`,
       event.title,
       typeLabels[event.type],
-      event.location,
+      event.type === 'vcs' ? (event.vcsLink || 'ВКС') : event.location,
       statusLabels[event.status],
     ]);
 
     autoTable(doc, {
       startY: 35,
-      head: [['Data', 'Vremja', 'Meroprijatie', 'Tip', 'Mesto', 'Status']],
+      head: [['Дата', 'Время', 'Мероприятие', 'Тип', 'Место/Ссылка', 'Статус']],
       body: tableData,
       styles: {
         font: 'helvetica',
@@ -461,8 +517,8 @@ const Index = () => {
     }
 
     const filename = dateStr 
-      ? `Grafik_${dateStr.replace(/[^0-9]/g, '_')}.pdf`
-      : `Grafik_raboty_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '_')}.pdf`;
+      ? `График_${dateStr.replace(/[^0-9]/g, '_')}.pdf`
+      : `График_работы_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '_')}.pdf`;
     
     doc.save(filename);
     toast.success('График экспортирован в PDF');
@@ -595,6 +651,7 @@ const Index = () => {
                                       <SelectItem value="committee">Комитет</SelectItem>
                                       <SelectItem value="meeting">Встреча</SelectItem>
                                       <SelectItem value="visit">Поездка</SelectItem>
+                                      <SelectItem value="vcs">ВКС</SelectItem>
                                       <SelectItem value="other">Другое</SelectItem>
                                     </SelectContent>
                                   </Select>
@@ -629,15 +686,27 @@ const Index = () => {
                                   placeholder="Введите название мероприятия"
                                 />
                               </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="location">Место проведения</Label>
-                                <Input
-                                  id="location"
-                                  value={newEvent.location}
-                                  onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
-                                  placeholder="Введите место проведения"
-                                />
-                              </div>
+                              {newEvent.type === 'vcs' ? (
+                                <div className="space-y-2">
+                                  <Label htmlFor="vcsLink">Ссылка на ВКС</Label>
+                                  <Input
+                                    id="vcsLink"
+                                    value={newEvent.vcsLink}
+                                    onChange={(e) => setNewEvent({ ...newEvent, vcsLink: e.target.value })}
+                                    placeholder="Введите ссылку на видеоконференцсвязь"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <Label htmlFor="location">Место проведения</Label>
+                                  <Input
+                                    id="location"
+                                    value={newEvent.location}
+                                    onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
+                                    placeholder="Введите место проведения"
+                                  />
+                                </div>
+                              )}
                               <div className="space-y-2">
                                 <Label htmlFor="description">Описание</Label>
                                 <Textarea
@@ -730,6 +799,7 @@ const Index = () => {
                           <SelectItem value="committee">Комитет</SelectItem>
                           <SelectItem value="meeting">Встреча</SelectItem>
                           <SelectItem value="visit">Поездка</SelectItem>
+                          <SelectItem value="vcs">ВКС</SelectItem>
                           <SelectItem value="other">Другое</SelectItem>
                         </SelectContent>
                       </Select>
@@ -811,10 +881,25 @@ const Index = () => {
                                                     {event.timeStart} — {event.timeEnd}
                                                   </span>
                                                 </div>
-                                                <div className="flex items-center gap-1">
-                                                  <Icon name="MapPin" size={14} />
-                                                  <span className="truncate">{event.location}</span>
-                                                </div>
+                                                {event.type === 'vcs' ? (
+                                                  <div className="flex items-center gap-1">
+                                                    <Icon name="Video" size={14} />
+                                                    <a
+                                                      href={event.vcsLink}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      onClick={(e) => e.stopPropagation()}
+                                                      className="text-primary hover:underline truncate"
+                                                    >
+                                                      Подключиться к ВКС
+                                                    </a>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center gap-1">
+                                                    <Icon name="MapPin" size={14} />
+                                                    <span className="truncate">{event.location}</span>
+                                                  </div>
+                                                )}
                                               </div>
                                             </div>
                                           </div>
@@ -943,10 +1028,17 @@ const Index = () => {
                                                     {event.timeStart} — {event.timeEnd}
                                                   </span>
                                                 </div>
-                                                <div className="flex items-center gap-1">
-                                                  <Icon name="MapPin" size={14} />
-                                                  <span className="truncate">{event.location}</span>
-                                                </div>
+                                                {event.type === 'vcs' ? (
+                                                  <div className="flex items-center gap-1">
+                                                    <Icon name="Video" size={14} />
+                                                    <span className="truncate">ВКС</span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center gap-1">
+                                                    <Icon name="MapPin" size={14} />
+                                                    <span className="truncate">{event.location}</span>
+                                                  </div>
+                                                )}
                                               </div>
                                             </div>
                                           </div>
@@ -1106,6 +1198,7 @@ const Index = () => {
                     <SelectItem value="committee">Комитет</SelectItem>
                     <SelectItem value="meeting">Встреча</SelectItem>
                     <SelectItem value="visit">Поездка</SelectItem>
+                    <SelectItem value="vcs">ВКС</SelectItem>
                     <SelectItem value="other">Другое</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1140,15 +1233,27 @@ const Index = () => {
                 placeholder="Введите название мероприятия"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-location">Место проведения</Label>
-              <Input
-                id="edit-location"
-                value={editEvent.location}
-                onChange={(e) => setEditEvent({ ...editEvent, location: e.target.value })}
-                placeholder="Введите место проведения"
-              />
-            </div>
+            {editEvent.type === 'vcs' ? (
+              <div className="space-y-2">
+                <Label htmlFor="edit-vcsLink">Ссылка на ВКС</Label>
+                <Input
+                  id="edit-vcsLink"
+                  value={editEvent.vcsLink}
+                  onChange={(e) => setEditEvent({ ...editEvent, vcsLink: e.target.value })}
+                  placeholder="Введите ссылку на видеоконференцсвязь"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="edit-location">Место проведения</Label>
+                <Input
+                  id="edit-location"
+                  value={editEvent.location}
+                  onChange={(e) => setEditEvent({ ...editEvent, location: e.target.value })}
+                  placeholder="Введите место проведения"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="edit-description">Описание</Label>
               <Textarea
@@ -1241,13 +1346,30 @@ const Index = () => {
                   </p>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label className="text-muted-foreground">Место проведения</Label>
-                <div className="flex items-center gap-2">
-                  <Icon name="MapPin" size={16} className="text-primary" />
-                  <p className="font-semibold">{selectedEvent.location}</p>
+              {selectedEvent.type === 'vcs' ? (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Ссылка на ВКС</Label>
+                  <div className="flex items-center gap-2">
+                    <Icon name="Video" size={16} className="text-primary" />
+                    <a 
+                      href={selectedEvent.vcsLink} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="font-semibold text-primary hover:underline break-all"
+                    >
+                      {selectedEvent.vcsLink}
+                    </a>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Место проведения</Label>
+                  <div className="flex items-center gap-2">
+                    <Icon name="MapPin" size={16} className="text-primary" />
+                    <p className="font-semibold">{selectedEvent.location}</p>
+                  </div>
+                </div>
+              )}
               {selectedEvent.description && (
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">Описание</Label>
