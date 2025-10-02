@@ -5,31 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Icon from '@/components/ui/icon';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import pdfMake from 'pdfmake/build/pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
-
-pdfMake.vfs = pdfFonts.pdfMake.vfs;
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,32 +16,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-interface ResponsiblePerson {
-  id: number;
-  name: string;
-  position: string;
-  phone: string;
-  email: string;
-}
-
-interface ScheduleEvent {
-  id: number;
-  date: string;
-  timeStart: string;
-  timeEnd: string;
-  title: string;
-  type: 'session' | 'committee' | 'meeting' | 'visit' | 'vcs' | 'regional-trip' | 'other';
-  location: string;
-  description: string;
-  status: 'scheduled' | 'in-progress' | 'completed' | 'cancelled';
-  reminder?: boolean;
-  reminderMinutes?: number;
-  archived?: boolean;
-  vcsLink?: string;
-  regionName?: string;
-  responsiblePersonId?: number;
-}
+import { ScheduleEvent, ResponsiblePerson } from '@/types/schedule';
+import { exportToPDF, printSchedule } from '@/utils/pdfExport';
+import { EventFormDialog } from '@/components/schedule/EventFormDialog';
+import { EventViewDialog } from '@/components/schedule/EventViewDialog';
+import { ResponsiblePersonDialog } from '@/components/schedule/ResponsiblePersonDialog';
+import { EventList } from '@/components/schedule/EventList';
 
 const Index = () => {
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -75,7 +34,7 @@ const Index = () => {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
-  
+
   const [responsiblePersons, setResponsiblePersons] = useState<ResponsiblePerson[]>([
     {
       id: 1,
@@ -85,14 +44,14 @@ const Index = () => {
       email: 'ivanov@duma.gov.ru',
     },
   ]);
-  
+
   const [newPerson, setNewPerson] = useState<Partial<ResponsiblePerson>>({
     name: '',
     position: '',
     phone: '',
     email: '',
   });
-  
+
   const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([
     {
       id: 1,
@@ -255,43 +214,6 @@ const Index = () => {
 
   const [editEvent, setEditEvent] = useState<Partial<ScheduleEvent>>({});
 
-  const typeLabels = {
-    session: 'Заседание',
-    committee: 'Комитет',
-    meeting: 'Встреча',
-    visit: 'Поездка',
-    vcs: 'ВКС',
-    'regional-trip': 'Выезд в регион',
-    other: 'Другое',
-  };
-
-  const typeIcons = {
-    session: 'Briefcase',
-    committee: 'Users',
-    meeting: 'UserCheck',
-    visit: 'MapPin',
-    vcs: 'Video',
-    'regional-trip': 'Plane',
-    other: 'Calendar',
-  };
-
-  const statusLabels = {
-    scheduled: 'Запланировано',
-    'in-progress': 'Идёт сейчас',
-    completed: 'Завершено',
-    cancelled: 'Отменено',
-  };
-
-  const typeColors = {
-    session: 'bg-blue-500/10 text-blue-700 border-blue-200',
-    committee: 'bg-purple-500/10 text-purple-700 border-purple-200',
-    meeting: 'bg-green-500/10 text-green-700 border-green-200',
-    visit: 'bg-orange-500/10 text-orange-700 border-orange-200',
-    vcs: 'bg-cyan-500/10 text-cyan-700 border-cyan-200',
-    'regional-trip': 'bg-indigo-500/10 text-indigo-700 border-indigo-200',
-    other: 'bg-gray-500/10 text-gray-700 border-gray-200',
-  };
-
   useEffect(() => {
     const updateStatuses = () => {
       const now = new Date();
@@ -303,7 +225,7 @@ const Index = () => {
         const [day, month, year] = event.date.split('.');
         const [startHours, startMinutes] = event.timeStart.split(':');
         const [endHours, endMinutes] = event.timeEnd.split(':');
-        
+
         const eventStart = new Date(
           parseInt(year),
           parseInt(month) - 1,
@@ -311,7 +233,7 @@ const Index = () => {
           parseInt(startHours),
           parseInt(startMinutes)
         );
-        
+
         const eventEnd = new Date(
           parseInt(year),
           parseInt(month) - 1,
@@ -325,7 +247,7 @@ const Index = () => {
         if (now >= eventEnd && event.status !== 'completed') {
           newStatus = 'completed';
           hasChanges = true;
-          
+
           const daysSinceEnd = Math.floor((now.getTime() - eventEnd.getTime()) / (1000 * 60 * 60 * 24));
           if (daysSinceEnd >= 7 && !event.archived) {
             return { ...event, status: newStatus, archived: true };
@@ -339,7 +261,11 @@ const Index = () => {
           const reminderTime = new Date(eventStart.getTime() - event.reminderMinutes * 60000);
           if (now >= reminderTime && now < eventStart) {
             toast.info(`Напоминание: ${event.title}`, {
-              description: `Начало через ${event.reminderMinutes} мин. ${event.type === 'vcs' && event.vcsLink ? 'Ссылка: ' + event.vcsLink : 'Место: ' + event.location}`,
+              description: `Начало через ${event.reminderMinutes} мин. ${
+                event.type === 'vcs' && event.vcsLink
+                  ? 'Ссылка: ' + event.vcsLink
+                  : 'Место: ' + event.location
+              }`,
               duration: 10000,
             });
           }
@@ -520,188 +446,26 @@ const Index = () => {
     setIsViewDialogOpen(true);
   };
 
-  const exportToPDF = (events?: ScheduleEvent[], dateStr?: string) => {
-    const eventsToExport = events || scheduleEvents.filter(e => !e.archived);
-    
-    const tableBody = eventsToExport.map((event) => {
-      const responsiblePerson = event.responsiblePersonId 
-        ? responsiblePersons.find(p => p.id === event.responsiblePersonId)
-        : null;
-      
-      let locationText = '';
-      if (event.type === 'vcs') {
-        locationText = event.vcsLink || 'ВКС';
-      } else if (event.type === 'regional-trip') {
-        locationText = event.regionName || 'Регион не указан';
-      } else {
-        locationText = event.location;
-      }
-      
-      return [
-        event.date,
-        `${event.timeStart} - ${event.timeEnd}`,
-        event.title,
-        typeLabels[event.type],
-        locationText,
-        responsiblePerson?.name || '-',
-        statusLabels[event.status],
-      ];
-    });
-
-    const docDefinition: any = {
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      content: [
-        {
-          text: dateStr 
-            ? `График работы депутата на ${dateStr}`
-            : 'График работы депутата Государственной Думы РФ',
-          style: 'header',
-          margin: [0, 0, 0, 10]
-        },
-        {
-          text: `Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`,
-          style: 'subheader',
-          margin: [0, 0, 0, 20]
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: ['auto', 'auto', '*', 'auto', '*', 'auto', 'auto'],
-            body: [
-              ['Дата', 'Время', 'Мероприятие', 'Тип', 'Место/Регион', 'Ответственный', 'Статус'],
-              ...tableBody
-            ]
-          },
-          layout: {
-            fillColor: (rowIndex: number) => (rowIndex === 0 ? '#0039A6' : (rowIndex % 2 === 0 ? '#f5f5f5' : null)),
-            hLineWidth: () => 0.5,
-            vLineWidth: () => 0.5,
-            hLineColor: () => '#cccccc',
-            vLineColor: () => '#cccccc',
-          }
-        }
-      ],
-      styles: {
-        header: {
-          fontSize: 18,
-          bold: true,
-          alignment: 'center'
-        },
-        subheader: {
-          fontSize: 10,
-          alignment: 'center',
-          color: '#666666'
-        }
-      },
-      defaultStyle: {
-        font: 'Roboto',
-        fontSize: 9
-      }
-    };
-
-    const filename = dateStr 
-      ? `График_${dateStr.replace(/[^0-9]/g, '_')}.pdf`
-      : `График_работы_${new Date().toLocaleDateString('ru-RU').replace(/\./g, '_')}.pdf`;
-
-    pdfMake.createPdf(docDefinition).download(filename);
-    toast.success('График экспортирован в PDF');
+  const handleExportToPDF = () => {
+    const eventsToExport = scheduleEvents.filter((e) => !e.archived);
+    exportToPDF(eventsToExport, responsiblePersons);
   };
-  
-  const printSchedule = (events?: ScheduleEvent[], dateStr?: string) => {
-    const eventsToExport = events || scheduleEvents.filter(e => !e.archived);
-    
-    const tableBody = eventsToExport.map((event) => {
-      const responsiblePerson = event.responsiblePersonId 
-        ? responsiblePersons.find(p => p.id === event.responsiblePersonId)
-        : null;
-      
-      let locationText = '';
-      if (event.type === 'vcs') {
-        locationText = event.vcsLink || 'ВКС';
-      } else if (event.type === 'regional-trip') {
-        locationText = event.regionName || 'Регион не указан';
-      } else {
-        locationText = event.location;
-      }
-      
-      return [
-        event.date,
-        `${event.timeStart} - ${event.timeEnd}`,
-        event.title,
-        typeLabels[event.type],
-        locationText,
-        responsiblePerson?.name || '-',
-        statusLabels[event.status],
-      ];
-    });
 
-    const docDefinition: any = {
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      content: [
-        {
-          text: dateStr 
-            ? `График работы депутата на ${dateStr}`
-            : 'График работы депутата Государственной Думы РФ',
-          style: 'header',
-          margin: [0, 0, 0, 10]
-        },
-        {
-          text: `Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`,
-          style: 'subheader',
-          margin: [0, 0, 0, 20]
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: ['auto', 'auto', '*', 'auto', '*', 'auto', 'auto'],
-            body: [
-              ['Дата', 'Время', 'Мероприятие', 'Тип', 'Место/Регион', 'Ответственный', 'Статус'],
-              ...tableBody
-            ]
-          },
-          layout: {
-            fillColor: (rowIndex: number) => (rowIndex === 0 ? '#0039A6' : (rowIndex % 2 === 0 ? '#f5f5f5' : null)),
-            hLineWidth: () => 0.5,
-            vLineWidth: () => 0.5,
-            hLineColor: () => '#cccccc',
-            vLineColor: () => '#cccccc',
-          }
-        }
-      ],
-      styles: {
-        header: {
-          fontSize: 18,
-          bold: true,
-          alignment: 'center'
-        },
-        subheader: {
-          fontSize: 10,
-          alignment: 'center',
-          color: '#666666'
-        }
-      },
-      defaultStyle: {
-        font: 'Roboto',
-        fontSize: 9
-      }
-    };
-
-    pdfMake.createPdf(docDefinition).print();
-    toast.success('Отправлено на печать');
+  const handlePrintSchedule = () => {
+    const eventsToExport = scheduleEvents.filter((e) => !e.archived);
+    printSchedule(eventsToExport, responsiblePersons);
   };
 
   const exportDayToPDF = (dateStr: string) => {
-    const dayEvents = scheduleEvents.filter(e => e.date === dateStr && !e.archived);
-    exportToPDF(dayEvents, dateStr);
+    const dayEvents = scheduleEvents.filter((e) => e.date === dateStr && !e.archived);
+    exportToPDF(dayEvents, responsiblePersons, dateStr);
   };
-  
+
   const printDay = (dateStr: string) => {
-    const dayEvents = scheduleEvents.filter(e => e.date === dateStr && !e.archived);
-    printSchedule(dayEvents, dateStr);
+    const dayEvents = scheduleEvents.filter((e) => e.date === dateStr && !e.archived);
+    printSchedule(dayEvents, responsiblePersons, dateStr);
   };
-  
+
   const handleAddPerson = () => {
     if (newPerson.name && newPerson.position) {
       const person: ResponsiblePerson = {
@@ -722,7 +486,7 @@ const Index = () => {
       toast.success('Ответственное лицо добавлено');
     }
   };
-  
+
   const handleDeletePerson = (id: number) => {
     setResponsiblePersons(responsiblePersons.filter((p) => p.id !== id));
     toast.success('Ответственное лицо удалено');
@@ -813,304 +577,45 @@ const Index = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent>
-                            <DropdownMenuItem onClick={() => exportToPDF()}>
+                            <DropdownMenuItem onClick={handleExportToPDF}>
                               <Icon name="FileDown" size={16} className="mr-2" />
                               Скачать PDF
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => printSchedule()}>
+                            <DropdownMenuItem onClick={handlePrintSchedule}>
                               <Icon name="Printer" size={16} className="mr-2" />
                               Печать
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Dialog open={isPersonDialogOpen} onOpenChange={setIsPersonDialogOpen}>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" className="shadow-sm">
-                              <Icon name="Users" size={16} className="mr-2" />
-                              Ответственные
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Управление ответственными лицами</DialogTitle>
-                              <DialogDescription>
-                                Добавьте или удалите ответственных за мероприятия
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4 py-4">
-                              <div className="space-y-3">
-                                {responsiblePersons.map((person) => (
-                                  <Card key={person.id} className="p-4">
-                                    <div className="flex items-start justify-between">
-                                      <div className="space-y-1">
-                                        <h4 className="font-semibold">{person.name}</h4>
-                                        <p className="text-sm text-muted-foreground">{person.position}</p>
-                                        {person.phone && (
-                                          <p className="text-sm text-muted-foreground flex items-center gap-1">
-                                            <Icon name="Phone" size={12} />
-                                            {person.phone}
-                                          </p>
-                                        )}
-                                        {person.email && (
-                                          <p className="text-sm text-muted-foreground flex items-center gap-1">
-                                            <Icon name="Mail" size={12} />
-                                            {person.email}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => handleDeletePerson(person.id)}
-                                      >
-                                        <Icon name="Trash2" size={16} className="text-destructive" />
-                                      </Button>
-                                    </div>
-                                  </Card>
-                                ))}
-                              </div>
-                              <div className="border-t pt-4 space-y-3">
-                                <h4 className="font-semibold">Добавить ответственное лицо</h4>
-                                <div className="grid gap-3">
-                                  <div className="space-y-2">
-                                    <Label htmlFor="person-name">ФИО</Label>
-                                    <Input
-                                      id="person-name"
-                                      value={newPerson.name}
-                                      onChange={(e) => setNewPerson({ ...newPerson, name: e.target.value })}
-                                      placeholder="Иванов Иван Иванович"
-                                    />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label htmlFor="person-position">Должность</Label>
-                                    <Input
-                                      id="person-position"
-                                      value={newPerson.position}
-                                      onChange={(e) => setNewPerson({ ...newPerson, position: e.target.value })}
-                                      placeholder="Помощник депутата"
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-2">
-                                      <Label htmlFor="person-phone">Телефон</Label>
-                                      <Input
-                                        id="person-phone"
-                                        value={newPerson.phone}
-                                        onChange={(e) => setNewPerson({ ...newPerson, phone: e.target.value })}
-                                        placeholder="+7 (495) 123-45-67"
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label htmlFor="person-email">Email</Label>
-                                      <Input
-                                        id="person-email"
-                                        type="email"
-                                        value={newPerson.email}
-                                        onChange={(e) => setNewPerson({ ...newPerson, email: e.target.value })}
-                                        placeholder="email@duma.gov.ru"
-                                      />
-                                    </div>
-                                  </div>
-                                  <Button onClick={handleAddPerson} className="w-full">
-                                    <Icon name="Plus" size={16} className="mr-2" />
-                                    Добавить
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setIsPersonDialogOpen(false)}>
-                                Закрыть
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                          <DialogTrigger asChild>
-                            <Button className="shadow-sm">
-                              <Icon name="Plus" size={16} className="mr-2" />
-                              Добавить мероприятие
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Добавить мероприятие в график</DialogTitle>
-                              <DialogDescription>
-                                Заполните информацию о новом мероприятии в графике работы
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                  <Label htmlFor="date">Дата</Label>
-                                  <Input
-                                    id="date"
-                                    type="date"
-                                    value={newEvent.date}
-                                    onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label htmlFor="type">Тип мероприятия</Label>
-                                  <Select
-                                    value={newEvent.type}
-                                    onValueChange={(value) =>
-                                      setNewEvent({ ...newEvent, type: value as ScheduleEvent['type'] })
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="session">Заседание</SelectItem>
-                                      <SelectItem value="committee">Комитет</SelectItem>
-                                      <SelectItem value="meeting">Встреча</SelectItem>
-                                      <SelectItem value="visit">Поездка</SelectItem>
-                                      <SelectItem value="vcs">ВКС</SelectItem>
-                                      <SelectItem value="regional-trip">Выезд в регион</SelectItem>
-                                      <SelectItem value="other">Другое</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                  <Label htmlFor="timeStart">Время начала</Label>
-                                  <Input
-                                    id="timeStart"
-                                    type="time"
-                                    value={newEvent.timeStart}
-                                    onChange={(e) => setNewEvent({ ...newEvent, timeStart: e.target.value })}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label htmlFor="timeEnd">Время окончания</Label>
-                                  <Input
-                                    id="timeEnd"
-                                    type="time"
-                                    value={newEvent.timeEnd}
-                                    onChange={(e) => setNewEvent({ ...newEvent, timeEnd: e.target.value })}
-                                  />
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="title">Название</Label>
-                                <Input
-                                  id="title"
-                                  value={newEvent.title}
-                                  onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                                  placeholder="Введите название мероприятия"
-                                />
-                              </div>
-                              {newEvent.type === 'vcs' ? (
-                                <div className="space-y-2">
-                                  <Label htmlFor="vcsLink">Ссылка на ВКС</Label>
-                                  <Input
-                                    id="vcsLink"
-                                    value={newEvent.vcsLink}
-                                    onChange={(e) => setNewEvent({ ...newEvent, vcsLink: e.target.value })}
-                                    placeholder="Введите ссылку на видеоконференцсвязь"
-                                  />
-                                </div>
-                              ) : newEvent.type === 'regional-trip' ? (
-                                <div className="space-y-2">
-                                  <Label htmlFor="regionName">Название региона</Label>
-                                  <Input
-                                    id="regionName"
-                                    value={newEvent.regionName}
-                                    onChange={(e) => setNewEvent({ ...newEvent, regionName: e.target.value })}
-                                    placeholder="Например: Московская область"
-                                  />
-                                </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  <Label htmlFor="location">Место проведения</Label>
-                                  <Input
-                                    id="location"
-                                    value={newEvent.location}
-                                    onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
-                                    placeholder="Введите место проведения"
-                                  />
-                                </div>
-                              )}
-                              <div className="space-y-2">
-                                <Label htmlFor="responsiblePerson">Ответственный</Label>
-                                <Select
-                                  value={newEvent.responsiblePersonId ? String(newEvent.responsiblePersonId) : 'none'}
-                                  onValueChange={(value) =>
-                                    setNewEvent({ ...newEvent, responsiblePersonId: value === 'none' ? undefined : parseInt(value) })
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Выберите ответственного" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="none">Не назначен</SelectItem>
-                                    {responsiblePersons.map((person) => (
-                                      <SelectItem key={person.id} value={String(person.id)}>
-                                        {person.name} ({person.position})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="description">Описание</Label>
-                                <Textarea
-                                  id="description"
-                                  value={newEvent.description}
-                                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
-                                  placeholder="Введите описание мероприятия"
-                                  rows={3}
-                                />
-                              </div>
-                              <div className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-1">
-                                  <Label htmlFor="reminder">Напоминание</Label>
-                                  <p className="text-sm text-muted-foreground">
-                                    Получать уведомление перед мероприятием
-                                  </p>
-                                </div>
-                                <Switch
-                                  id="reminder"
-                                  checked={newEvent.reminder}
-                                  onCheckedChange={(checked) => setNewEvent({ ...newEvent, reminder: checked })}
-                                />
-                              </div>
-                              {newEvent.reminder && (
-                                <div className="space-y-2">
-                                  <Label htmlFor="reminderMinutes">За сколько минут напомнить</Label>
-                                  <Select
-                                    value={String(newEvent.reminderMinutes)}
-                                    onValueChange={(value) =>
-                                      setNewEvent({ ...newEvent, reminderMinutes: parseInt(value) })
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="5">За 5 минут</SelectItem>
-                                      <SelectItem value="15">За 15 минут</SelectItem>
-                                      <SelectItem value="30">За 30 минут</SelectItem>
-                                      <SelectItem value="60">За 1 час</SelectItem>
-                                      <SelectItem value="120">За 2 часа</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              )}
-                            </div>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                                Отмена
-                              </Button>
-                              <Button onClick={handleAddEvent}>Добавить</Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
+                        <ResponsiblePersonDialog
+                          open={isPersonDialogOpen}
+                          onOpenChange={setIsPersonDialogOpen}
+                          responsiblePersons={responsiblePersons}
+                          newPerson={newPerson}
+                          setNewPerson={setNewPerson}
+                          onAddPerson={handleAddPerson}
+                          onDeletePerson={handleDeletePerson}
+                        />
+                        <Button variant="outline" className="shadow-sm" onClick={() => setIsPersonDialogOpen(true)}>
+                          <Icon name="Users" size={16} className="mr-2" />
+                          Ответственные
+                        </Button>
+                        <EventFormDialog
+                          open={isAddDialogOpen}
+                          onOpenChange={setIsAddDialogOpen}
+                          event={newEvent}
+                          setEvent={setNewEvent}
+                          onSave={handleAddEvent}
+                          responsiblePersons={responsiblePersons}
+                          title="Добавить мероприятие в график"
+                        />
+                        <Button className="shadow-sm" onClick={() => setIsAddDialogOpen(true)}>
+                          <Icon name="Plus" size={16} className="mr-2" />
+                          Добавить мероприятие
+                        </Button>
                       </div>
                     </div>
-                    
+
                     <TabsList className="grid w-full grid-cols-2 max-w-md">
                       <TabsTrigger value="active">
                         <Icon name="Calendar" size={16} className="mr-2" />
@@ -1166,307 +671,41 @@ const Index = () => {
                     </div>
                   </div>
                 </CardHeader>
-                
+
                 <TabsContent value="active" className="m-0">
                   <CardContent className="p-6">
-                    {sortedDates.length === 0 ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        <Icon name="CalendarX" size={48} className="mx-auto mb-3 opacity-50" />
-                        <p className="text-lg font-medium">Мероприятия не найдены</p>
-                        <p className="text-sm">Попробуйте изменить параметры поиска</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-8">
-                        {sortedDates.map((dateStr) => (
-                          <div key={dateStr} className="space-y-3">
-                            <div className="flex items-center gap-3 pb-2 border-b-2 border-primary/20">
-                              <Icon name="CalendarDays" size={20} className="text-primary" />
-                              <h3 className="text-lg font-bold text-primary flex-1">{formatDateHeader(dateStr)}</h3>
-                              <Badge variant="outline">
-                                {groupedEvents[dateStr].length} мероприятий
-                              </Badge>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="outline" size="sm" className="shadow-sm">
-                                    <Icon name="Download" size={14} className="mr-1" />
-                                    Экспорт
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                  <DropdownMenuItem onClick={() => exportDayToPDF(dateStr)}>
-                                    <Icon name="FileDown" size={14} className="mr-2" />
-                                    PDF
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => printDay(dateStr)}>
-                                    <Icon name="Printer" size={14} className="mr-2" />
-                                    Печать
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                            <div className="grid gap-3">
-                              {groupedEvents[dateStr].map((event) => (
-                                <Card
-                                  key={event.id}
-                                  className={`hover:shadow-md transition-all border-l-4 cursor-pointer ${
-                                    event.status === 'in-progress'
-                                      ? 'border-l-green-500 bg-green-50/50'
-                                      : event.status === 'completed'
-                                      ? 'border-l-gray-400 bg-gray-50/50'
-                                      : event.status === 'cancelled'
-                                      ? 'border-l-red-400 bg-red-50/50'
-                                      : 'border-l-blue-500'
-                                  }`}
-                                  onClick={() => openViewDialog(event)}
-                                >
-                                  <CardContent className="p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="flex items-start gap-4 flex-1">
-                                        <div className={`p-3 rounded-lg ${typeColors[event.type]} border shrink-0`}>
-                                          <Icon name={typeIcons[event.type]} size={24} />
-                                        </div>
-                                        <div className="flex-1 space-y-2 min-w-0">
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div className="flex-1 min-w-0">
-                                              <h4 className="font-bold text-lg leading-tight mb-1 truncate">
-                                                {event.title}
-                                              </h4>
-                                              <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                                                <div className="flex items-center gap-1">
-                                                  <Icon name="Clock" size={14} />
-                                                  <span className="font-medium">
-                                                    {event.timeStart} — {event.timeEnd}
-                                                  </span>
-                                                </div>
-                                                {event.type === 'vcs' ? (
-                                                  <div className="flex items-center gap-1">
-                                                    <Icon name="Video" size={14} />
-                                                    <a
-                                                      href={event.vcsLink}
-                                                      target="_blank"
-                                                      rel="noopener noreferrer"
-                                                      onClick={(e) => e.stopPropagation()}
-                                                      className="text-primary hover:underline truncate"
-                                                    >
-                                                      Подключиться к ВКС
-                                                    </a>
-                                                  </div>
-                                                ) : event.type === 'regional-trip' ? (
-                                                  <div className="flex items-center gap-1">
-                                                    <Icon name="Plane" size={14} />
-                                                    <span className="truncate">{event.regionName || 'Регион'}</span>
-                                                  </div>
-                                                ) : (
-                                                  <div className="flex items-center gap-1">
-                                                    <Icon name="MapPin" size={14} />
-                                                    <span className="truncate">{event.location}</span>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          {event.description && (
-                                            <p className="text-sm text-muted-foreground line-clamp-2">
-                                              {event.description}
-                                            </p>
-                                          )}
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <Badge variant="outline" className={typeColors[event.type]}>
-                                              {typeLabels[event.type]}
-                                            </Badge>
-                                            <Badge
-                                              variant={
-                                                event.status === 'in-progress'
-                                                  ? 'default'
-                                                  : event.status === 'completed'
-                                                  ? 'secondary'
-                                                  : event.status === 'cancelled'
-                                                  ? 'destructive'
-                                                  : 'outline'
-                                              }
-                                            >
-                                              {statusLabels[event.status]}
-                                            </Badge>
-                                            {event.reminder && (
-                                              <Badge variant="outline" className="flex items-center gap-1">
-                                                <Icon name="Bell" size={12} />
-                                                {event.reminderMinutes} мин
-                                              </Badge>
-                                            )}
-                                            {event.responsiblePersonId && responsiblePersons.find(p => p.id === event.responsiblePersonId) && (
-                                              <Badge variant="outline" className="flex items-center gap-1">
-                                                <Icon name="User" size={12} />
-                                                {responsiblePersons.find(p => p.id === event.responsiblePersonId)?.name.split(' ')[0]}
-                                              </Badge>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                          <Button variant="ghost" size="icon" className="shrink-0">
-                                            <Icon name="MoreVertical" size={18} />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              openEditDialog(event);
-                                            }}
-                                          >
-                                            <Icon name="Pencil" size={16} className="mr-2" />
-                                            Редактировать
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleArchiveEvent(event.id);
-                                            }}
-                                          >
-                                            <Icon name="Archive" size={16} className="mr-2" />
-                                            В архив
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleDeleteEvent(event.id);
-                                            }}
-                                            className="text-destructive focus:text-destructive"
-                                          >
-                                            <Icon name="Trash2" size={16} className="mr-2" />
-                                            Удалить
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <EventList
+                      groupedEvents={groupedEvents}
+                      sortedDates={sortedDates}
+                      responsiblePersons={responsiblePersons}
+                      formatDateHeader={formatDateHeader}
+                      onView={openViewDialog}
+                      onEdit={openEditDialog}
+                      onArchive={handleArchiveEvent}
+                      onUnarchive={handleUnarchiveEvent}
+                      onDelete={handleDeleteEvent}
+                      onExportDay={exportDayToPDF}
+                      onPrintDay={printDay}
+                    />
                   </CardContent>
                 </TabsContent>
 
                 <TabsContent value="archive" className="m-0">
                   <CardContent className="p-6">
-                    {sortedDates.length === 0 ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        <Icon name="Archive" size={48} className="mx-auto mb-3 opacity-50" />
-                        <p className="text-lg font-medium">Архив пуст</p>
-                        <p className="text-sm">Завершённые мероприятия будут отображаться здесь</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-8">
-                        {sortedDates.map((dateStr) => (
-                          <div key={dateStr} className="space-y-3">
-                            <div className="flex items-center gap-3 pb-2 border-b-2 border-gray-300">
-                              <Icon name="CalendarDays" size={20} className="text-gray-600" />
-                              <h3 className="text-lg font-bold text-gray-700 flex-1">{formatDateHeader(dateStr)}</h3>
-                              <Badge variant="outline">
-                                {groupedEvents[dateStr].length} мероприятий
-                              </Badge>
-                            </div>
-                            <div className="grid gap-3">
-                              {groupedEvents[dateStr].map((event) => (
-                                <Card
-                                  key={event.id}
-                                  className="hover:shadow-md transition-all border-l-4 border-l-gray-400 bg-gray-50/30 cursor-pointer"
-                                  onClick={() => openViewDialog(event)}
-                                >
-                                  <CardContent className="p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="flex items-start gap-4 flex-1">
-                                        <div className={`p-3 rounded-lg ${typeColors[event.type]} border shrink-0 opacity-70`}>
-                                          <Icon name={typeIcons[event.type]} size={24} />
-                                        </div>
-                                        <div className="flex-1 space-y-2 min-w-0">
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div className="flex-1 min-w-0">
-                                              <h4 className="font-bold text-lg leading-tight mb-1 truncate text-gray-700">
-                                                {event.title}
-                                              </h4>
-                                              <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-                                                <div className="flex items-center gap-1">
-                                                  <Icon name="Clock" size={14} />
-                                                  <span className="font-medium">
-                                                    {event.timeStart} — {event.timeEnd}
-                                                  </span>
-                                                </div>
-                                                {event.type === 'vcs' ? (
-                                                  <div className="flex items-center gap-1">
-                                                    <Icon name="Video" size={14} />
-                                                    <span className="truncate">ВКС</span>
-                                                  </div>
-                                                ) : event.type === 'regional-trip' ? (
-                                                  <div className="flex items-center gap-1">
-                                                    <Icon name="Plane" size={14} />
-                                                    <span className="truncate">{event.regionName || 'Регион'}</span>
-                                                  </div>
-                                                ) : (
-                                                  <div className="flex items-center gap-1">
-                                                    <Icon name="MapPin" size={14} />
-                                                    <span className="truncate">{event.location}</span>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          {event.description && (
-                                            <p className="text-sm text-muted-foreground line-clamp-2">
-                                              {event.description}
-                                            </p>
-                                          )}
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <Badge variant="outline" className={typeColors[event.type]}>
-                                              {typeLabels[event.type]}
-                                            </Badge>
-                                            <Badge variant="secondary">
-                                              {statusLabels[event.status]}
-                                            </Badge>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                          <Button variant="ghost" size="icon" className="shrink-0">
-                                            <Icon name="MoreVertical" size={18} />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleUnarchiveEvent(event.id);
-                                            }}
-                                          >
-                                            <Icon name="ArchiveRestore" size={16} className="mr-2" />
-                                            Восстановить
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleDeleteEvent(event.id);
-                                            }}
-                                            className="text-destructive focus:text-destructive"
-                                          >
-                                            <Icon name="Trash2" size={16} className="mr-2" />
-                                            Удалить
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <EventList
+                      groupedEvents={groupedEvents}
+                      sortedDates={sortedDates}
+                      responsiblePersons={responsiblePersons}
+                      formatDateHeader={formatDateHeader}
+                      onView={openViewDialog}
+                      onEdit={openEditDialog}
+                      onArchive={handleArchiveEvent}
+                      onUnarchive={handleUnarchiveEvent}
+                      onDelete={handleDeleteEvent}
+                      onExportDay={exportDayToPDF}
+                      onPrintDay={printDay}
+                      isArchived
+                    />
                   </CardContent>
                 </TabsContent>
               </Card>
@@ -1482,12 +721,7 @@ const Index = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={setDate}
-                  className="rounded-md border shadow-sm"
-                />
+                <Calendar mode="single" selected={date} onSelect={setDate} className="rounded-md border shadow-sm" />
               </CardContent>
             </Card>
 
@@ -1538,326 +772,25 @@ const Index = () => {
         </div>
       </div>
 
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Редактировать мероприятие</DialogTitle>
-            <DialogDescription>Измените информацию о мероприятии</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-date">Дата</Label>
-                <Input
-                  id="edit-date"
-                  type="date"
-                  value={editEvent.date}
-                  onChange={(e) => setEditEvent({ ...editEvent, date: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-type">Тип мероприятия</Label>
-                <Select
-                  value={editEvent.type}
-                  onValueChange={(value) =>
-                    setEditEvent({ ...editEvent, type: value as ScheduleEvent['type'] })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="session">Заседание</SelectItem>
-                    <SelectItem value="committee">Комитет</SelectItem>
-                    <SelectItem value="meeting">Встреча</SelectItem>
-                    <SelectItem value="visit">Поездка</SelectItem>
-                    <SelectItem value="vcs">ВКС</SelectItem>
-                    <SelectItem value="regional-trip">Выезд в регион</SelectItem>
-                    <SelectItem value="other">Другое</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-timeStart">Время начала</Label>
-                <Input
-                  id="edit-timeStart"
-                  type="time"
-                  value={editEvent.timeStart}
-                  onChange={(e) => setEditEvent({ ...editEvent, timeStart: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-timeEnd">Время окончания</Label>
-                <Input
-                  id="edit-timeEnd"
-                  type="time"
-                  value={editEvent.timeEnd}
-                  onChange={(e) => setEditEvent({ ...editEvent, timeEnd: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-title">Название</Label>
-              <Input
-                id="edit-title"
-                value={editEvent.title}
-                onChange={(e) => setEditEvent({ ...editEvent, title: e.target.value })}
-                placeholder="Введите название мероприятия"
-              />
-            </div>
-            {editEvent.type === 'vcs' ? (
-              <div className="space-y-2">
-                <Label htmlFor="edit-vcsLink">Ссылка на ВКС</Label>
-                <Input
-                  id="edit-vcsLink"
-                  value={editEvent.vcsLink}
-                  onChange={(e) => setEditEvent({ ...editEvent, vcsLink: e.target.value })}
-                  placeholder="Введите ссылку на видеоконференцсвязь"
-                />
-              </div>
-            ) : editEvent.type === 'regional-trip' ? (
-              <div className="space-y-2">
-                <Label htmlFor="edit-regionName">Название региона</Label>
-                <Input
-                  id="edit-regionName"
-                  value={editEvent.regionName}
-                  onChange={(e) => setEditEvent({ ...editEvent, regionName: e.target.value })}
-                  placeholder="Например: Московская область"
-                />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="edit-location">Место проведения</Label>
-                <Input
-                  id="edit-location"
-                  value={editEvent.location}
-                  onChange={(e) => setEditEvent({ ...editEvent, location: e.target.value })}
-                  placeholder="Введите место проведения"
-                />
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="edit-responsiblePerson">Ответственный</Label>
-              <Select
-                value={editEvent.responsiblePersonId ? String(editEvent.responsiblePersonId) : 'none'}
-                onValueChange={(value) =>
-                  setEditEvent({ ...editEvent, responsiblePersonId: value === 'none' ? undefined : parseInt(value) })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите ответственного" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Не назначен</SelectItem>
-                  {responsiblePersons.map((person) => (
-                    <SelectItem key={person.id} value={String(person.id)}>
-                      {person.name} ({person.position})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-description">Описание</Label>
-              <Textarea
-                id="edit-description"
-                value={editEvent.description}
-                onChange={(e) => setEditEvent({ ...editEvent, description: e.target.value })}
-                placeholder="Введите описание мероприятия"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-status">Статус</Label>
-              <Select
-                value={editEvent.status}
-                onValueChange={(value) =>
-                  setEditEvent({ ...editEvent, status: value as ScheduleEvent['status'] })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="scheduled">Запланировано</SelectItem>
-                  <SelectItem value="in-progress">Идёт сейчас</SelectItem>
-                  <SelectItem value="completed">Завершено</SelectItem>
-                  <SelectItem value="cancelled">Отменено</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="space-y-1">
-                <Label htmlFor="edit-reminder">Напоминание</Label>
-                <p className="text-sm text-muted-foreground">Получать уведомление перед мероприятием</p>
-              </div>
-              <Switch
-                id="edit-reminder"
-                checked={editEvent.reminder}
-                onCheckedChange={(checked) => setEditEvent({ ...editEvent, reminder: checked })}
-              />
-            </div>
-            {editEvent.reminder && (
-              <div className="space-y-2">
-                <Label htmlFor="edit-reminderMinutes">За сколько минут напомнить</Label>
-                <Select
-                  value={String(editEvent.reminderMinutes)}
-                  onValueChange={(value) =>
-                    setEditEvent({ ...editEvent, reminderMinutes: parseInt(value) })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="5">За 5 минут</SelectItem>
-                    <SelectItem value="15">За 15 минут</SelectItem>
-                    <SelectItem value="30">За 30 минут</SelectItem>
-                    <SelectItem value="60">За 1 час</SelectItem>
-                    <SelectItem value="120">За 2 часа</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Отмена
-            </Button>
-            <Button onClick={handleEditEvent}>Сохранить изменения</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EventFormDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        event={editEvent}
+        setEvent={setEditEvent}
+        onSave={handleEditEvent}
+        responsiblePersons={responsiblePersons}
+        title="Редактировать мероприятие"
+        isEdit
+      />
 
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-2xl">{selectedEvent?.title}</DialogTitle>
-            <DialogDescription>Подробная информация о мероприятии</DialogDescription>
-          </DialogHeader>
-          {selectedEvent && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Дата</Label>
-                  <p className="font-semibold">{formatDateHeader(selectedEvent.date)}</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Время</Label>
-                  <p className="font-semibold">
-                    {selectedEvent.timeStart} — {selectedEvent.timeEnd}
-                  </p>
-                </div>
-              </div>
-              {selectedEvent.type === 'vcs' ? (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Ссылка на ВКС</Label>
-                  <div className="flex items-center gap-2">
-                    <Icon name="Video" size={16} className="text-primary" />
-                    <a 
-                      href={selectedEvent.vcsLink} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="font-semibold text-primary hover:underline break-all"
-                    >
-                      {selectedEvent.vcsLink}
-                    </a>
-                  </div>
-                </div>
-              ) : selectedEvent.type === 'regional-trip' ? (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Регион поездки</Label>
-                  <div className="flex items-center gap-2">
-                    <Icon name="Plane" size={16} className="text-primary" />
-                    <p className="font-semibold">{selectedEvent.regionName}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Место проведения</Label>
-                  <div className="flex items-center gap-2">
-                    <Icon name="MapPin" size={16} className="text-primary" />
-                    <p className="font-semibold">{selectedEvent.location}</p>
-                  </div>
-                </div>
-              )}
-              {selectedEvent.responsiblePersonId && responsiblePersons.find(p => p.id === selectedEvent.responsiblePersonId) && (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Ответственный</Label>
-                  <div className="flex items-center gap-2">
-                    <Icon name="User" size={16} className="text-primary" />
-                    <div>
-                      <p className="font-semibold">
-                        {responsiblePersons.find(p => p.id === selectedEvent.responsiblePersonId)?.name}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {responsiblePersons.find(p => p.id === selectedEvent.responsiblePersonId)?.position}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {selectedEvent.description && (
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Описание</Label>
-                  <p className="text-sm">{selectedEvent.description}</p>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Тип мероприятия</Label>
-                  <Badge className={typeColors[selectedEvent.type]}>
-                    <Icon name={typeIcons[selectedEvent.type]} size={14} className="mr-1" />
-                    {typeLabels[selectedEvent.type]}
-                  </Badge>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Статус</Label>
-                  <Badge
-                    variant={
-                      selectedEvent.status === 'in-progress'
-                        ? 'default'
-                        : selectedEvent.status === 'completed'
-                        ? 'secondary'
-                        : selectedEvent.status === 'cancelled'
-                        ? 'destructive'
-                        : 'outline'
-                    }
-                  >
-                    {statusLabels[selectedEvent.status]}
-                  </Badge>
-                </div>
-              </div>
-              {selectedEvent.reminder && (
-                <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                  <Icon name="Bell" size={16} className="text-orange-600" />
-                  <p className="text-sm font-medium text-orange-800">
-                    Напоминание за {selectedEvent.reminderMinutes} минут до начала
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
-              Закрыть
-            </Button>
-            <Button
-              onClick={() => {
-                setIsViewDialogOpen(false);
-                if (selectedEvent) {
-                  openEditDialog(selectedEvent);
-                }
-              }}
-            >
-              <Icon name="Pencil" size={16} className="mr-2" />
-              Редактировать
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EventViewDialog
+        open={isViewDialogOpen}
+        onOpenChange={setIsViewDialogOpen}
+        event={selectedEvent}
+        responsiblePersons={responsiblePersons}
+        onEdit={openEditDialog}
+        formatDateHeader={formatDateHeader}
+      />
     </div>
   );
 };
