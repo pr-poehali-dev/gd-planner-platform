@@ -20,8 +20,11 @@ import { EventFormDialog } from '@/components/schedule/EventFormDialog';
 import { EventViewDialog } from '@/components/schedule/EventViewDialog';
 import { ResponsiblePersonDialog } from '@/components/schedule/ResponsiblePersonDialog';
 import { EventList } from '@/components/schedule/EventList';
+import { useSchedule } from '@/hooks/useSchedule';
 
 const Index = () => {
+  const { events: scheduleEvents, persons: responsiblePersons, loading, addEvent, updateEvent, deleteEvent, addPerson, deletePerson } = useSchedule();
+  
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -33,16 +36,6 @@ const Index = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
 
-  const [responsiblePersons, setResponsiblePersons] = useState<ResponsiblePerson[]>([
-    {
-      id: 1,
-      name: 'Иванов Иван Иванович',
-      position: 'Помощник депутата',
-      phone: '+7 (495) 123-45-67',
-      email: 'ivanov@duma.gov.ru',
-    },
-  ]);
-
   const [newPerson, setNewPerson] = useState<Partial<ResponsiblePerson>>({
     name: '',
     position: '',
@@ -50,148 +43,7 @@ const Index = () => {
     email: '',
   });
 
-  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([
-    {
-      id: 1,
-      date: '02.10.2025',
-      timeStart: '10:00',
-      timeEnd: '14:00',
-      title: 'Пленарное заседание Госдумы',
-      type: 'session',
-      location: 'Большой зал',
-      description: 'Рассмотрение законопроектов второго чтения',
-      status: 'in-progress',
-      reminder: true,
-      reminderMinutes: 30,
-      archived: false,
-    },
-    {
-      id: 2,
-      date: '02.10.2025',
-      timeStart: '15:00',
-      timeEnd: '17:00',
-      title: 'Заседание комитета по бюджету',
-      type: 'committee',
-      location: 'Зал комитета, 3 этаж',
-      description: 'Обсуждение проекта бюджета на 2026 год',
-      status: 'scheduled',
-      reminder: true,
-      reminderMinutes: 15,
-      archived: false,
-    },
-    {
-      id: 3,
-      date: '02.10.2025',
-      timeStart: '18:00',
-      timeEnd: '19:30',
-      title: 'Встреча с избирателями',
-      type: 'meeting',
-      location: 'Общественная приёмная',
-      description: 'Вопросы благоустройства района',
-      status: 'scheduled',
-      reminder: false,
-      archived: false,
-    },
-    {
-      id: 4,
-      date: '03.10.2025',
-      timeStart: '11:00',
-      timeEnd: '13:00',
-      title: 'Рабочая поездка в школу №15',
-      type: 'visit',
-      location: 'г. Москва, ул. Ленина, 15',
-      description: 'Инспекция ремонта образовательного учреждения',
-      status: 'scheduled',
-      reminder: true,
-      reminderMinutes: 60,
-      archived: false,
-    },
-    {
-      id: 5,
-      date: '03.10.2025',
-      timeStart: '16:00',
-      timeEnd: '18:00',
-      title: 'Совещание с помощниками',
-      type: 'other',
-      location: 'Рабочий кабинет',
-      description: 'Планирование работы на неделю',
-      status: 'scheduled',
-      reminder: false,
-      archived: false,
-    },
-    {
-      id: 6,
-      date: '04.10.2025',
-      timeStart: '09:00',
-      timeEnd: '10:30',
-      title: 'Пресс-конференция',
-      type: 'other',
-      location: 'Пресс-центр',
-      description: 'Обсуждение принятых законопроектов',
-      status: 'scheduled',
-      reminder: true,
-      reminderMinutes: 30,
-      archived: false,
-    },
-    {
-      id: 7,
-      date: '04.10.2025',
-      timeStart: '14:00',
-      timeEnd: '16:00',
-      title: 'Заседание фракции',
-      type: 'session',
-      location: 'Зал заседаний фракции',
-      description: 'Обсуждение стратегии на следующую неделю',
-      status: 'scheduled',
-      reminder: false,
-      archived: false,
-    },
-    {
-      id: 8,
-      date: '25.09.2025',
-      timeStart: '10:00',
-      timeEnd: '12:00',
-      title: 'Встреча с министром образования',
-      type: 'meeting',
-      location: 'Министерство образования',
-      description: 'Обсуждение реформы школьного образования',
-      status: 'completed',
-      reminder: false,
-      archived: true,
-    },
-    {
-      id: 9,
-      date: '03.10.2025',
-      timeStart: '10:00',
-      timeEnd: '11:30',
-      title: 'Онлайн-совещание с региональными представителями',
-      type: 'vcs',
-      location: '',
-      description: 'Обсуждение региональных инициатив и законопроектов',
-      status: 'scheduled',
-      reminder: true,
-      reminderMinutes: 15,
-      archived: false,
-      vcsLink: 'https://meet.example.com/regional-meeting-2025',
-      responsiblePersonId: 1,
-    },
-    {
-      id: 10,
-      date: '05.10.2025',
-      timeStart: '09:00',
-      timeEnd: '18:00',
-      title: 'Рабочая поездка в Московскую область',
-      type: 'regional-trip',
-      location: '',
-      description: 'Встречи с местными органами власти, инспекция объектов строительства',
-      status: 'scheduled',
-      reminder: true,
-      reminderMinutes: 60,
-      archived: false,
-      regionName: 'Московская область',
-      responsiblePersonId: 1,
-    },
-  ]);
+
 
   const [newEvent, setNewEvent] = useState<Partial<ScheduleEvent>>({
     date: '',
@@ -237,12 +89,11 @@ const Index = () => {
   };
 
   useEffect(() => {
-    const updateStatuses = () => {
+    const updateStatuses = async () => {
       const now = new Date();
-      let hasChanges = false;
 
-      const updatedEvents = scheduleEvents.map((event) => {
-        if (event.archived || event.status === 'cancelled') return event;
+      for (const event of scheduleEvents) {
+        if (event.archived || event.status === 'cancelled') continue;
 
         const [day, month, year] = event.date.split('.');
         const [startHours, startMinutes] = event.timeStart.split(':');
@@ -265,18 +116,20 @@ const Index = () => {
         );
 
         let newStatus = event.status;
+        let newArchived = event.archived;
 
         if (now >= eventEnd && event.status !== 'completed') {
           newStatus = 'completed';
-          hasChanges = true;
-
           const daysSinceEnd = Math.floor((now.getTime() - eventEnd.getTime()) / (1000 * 60 * 60 * 24));
           if (daysSinceEnd >= 7 && !event.archived) {
-            return { ...event, status: newStatus, archived: true };
+            newArchived = true;
           }
         } else if (now >= eventStart && now < eventEnd && event.status === 'scheduled') {
           newStatus = 'in-progress';
-          hasChanges = true;
+        }
+
+        if (newStatus !== event.status || newArchived !== event.archived) {
+          await updateEvent({ ...event, status: newStatus, archived: newArchived });
         }
 
         if (event.reminder && event.reminderMinutes && event.status === 'scheduled') {
@@ -292,12 +145,6 @@ const Index = () => {
             });
           }
         }
-
-        return newStatus !== event.status ? { ...event, status: newStatus } : event;
-      });
-
-      if (hasChanges) {
-        setScheduleEvents(updatedEvents);
       }
     };
 
@@ -305,7 +152,7 @@ const Index = () => {
     const interval = setInterval(updateStatuses, 60000);
 
     return () => clearInterval(interval);
-  }, [scheduleEvents]);
+  }, [scheduleEvents, updateEvent]);
 
   const filteredEvents = useMemo(() => {
     return scheduleEvents.filter((event) => {
@@ -352,13 +199,12 @@ const Index = () => {
     });
   }, [groupedEvents]);
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (newEvent.title && newEvent.date && newEvent.timeStart && newEvent.timeEnd) {
       const [year, month, day] = newEvent.date!.split('-');
       const formattedDate = `${day}.${month}.${year}`;
 
-      const event: ScheduleEvent = {
-        id: Math.max(...scheduleEvents.map((e) => e.id), 0) + 1,
+      await addEvent({
         date: formattedDate,
         timeStart: newEvent.timeStart!,
         timeEnd: newEvent.timeEnd!,
@@ -373,8 +219,8 @@ const Index = () => {
         vcsLink: newEvent.vcsLink || '',
         regionName: newEvent.regionName || '',
         responsiblePersonId: newEvent.responsiblePersonId,
-      };
-      setScheduleEvents([...scheduleEvents, event]);
+      });
+      
       setIsAddDialogOpen(false);
       setNewEvent({
         date: '',
@@ -396,7 +242,7 @@ const Index = () => {
     }
   };
 
-  const handleEditEvent = () => {
+  const handleEditEvent = async () => {
     if (editEvent.id && editEvent.title && editEvent.date && editEvent.timeStart && editEvent.timeEnd) {
       let formattedDate = editEvent.date!;
       if (editEvent.date!.includes('-')) {
@@ -404,52 +250,49 @@ const Index = () => {
         formattedDate = `${day}.${month}.${year}`;
       }
 
-      const updatedEvents = scheduleEvents.map((event) =>
-        event.id === editEvent.id
-          ? {
-              ...event,
-              date: formattedDate,
-              timeStart: editEvent.timeStart!,
-              timeEnd: editEvent.timeEnd!,
-              title: editEvent.title!,
-              type: editEvent.type as ScheduleEvent['type'],
-              location: editEvent.location || '',
-              description: editEvent.description || '',
-              status: editEvent.status as ScheduleEvent['status'],
-              reminder: editEvent.reminder || false,
-              reminderMinutes: editEvent.reminderMinutes || 15,
-              vcsLink: editEvent.vcsLink || '',
-              regionName: editEvent.regionName || '',
-              responsiblePersonId: editEvent.responsiblePersonId,
-            }
-          : event
-      );
-      setScheduleEvents(updatedEvents);
+      await updateEvent({
+        id: editEvent.id,
+        date: formattedDate,
+        timeStart: editEvent.timeStart!,
+        timeEnd: editEvent.timeEnd!,
+        title: editEvent.title!,
+        type: editEvent.type as ScheduleEvent['type'],
+        location: editEvent.location || '',
+        description: editEvent.description || '',
+        status: editEvent.status as ScheduleEvent['status'],
+        reminder: editEvent.reminder || false,
+        reminderMinutes: editEvent.reminderMinutes || 15,
+        vcsLink: editEvent.vcsLink || '',
+        regionName: editEvent.regionName || '',
+        responsiblePersonId: editEvent.responsiblePersonId,
+        archived: editEvent.archived || false,
+      } as ScheduleEvent);
+      
       setIsEditDialogOpen(false);
       setEditEvent({});
       toast.success('Мероприятие обновлено');
     }
   };
 
-  const handleDeleteEvent = (id: number) => {
-    setScheduleEvents(scheduleEvents.filter((event) => event.id !== id));
+  const handleDeleteEvent = async (id: number) => {
+    await deleteEvent(id);
     toast.success('Мероприятие удалено из графика');
   };
 
-  const handleArchiveEvent = (id: number) => {
-    const updatedEvents = scheduleEvents.map((event) =>
-      event.id === id ? { ...event, archived: true } : event
-    );
-    setScheduleEvents(updatedEvents);
-    toast.success('Мероприятие перемещено в архив');
+  const handleArchiveEvent = async (id: number) => {
+    const event = scheduleEvents.find(e => e.id === id);
+    if (event) {
+      await updateEvent({ ...event, archived: true });
+      toast.success('Мероприятие перемещено в архив');
+    }
   };
 
-  const handleUnarchiveEvent = (id: number) => {
-    const updatedEvents = scheduleEvents.map((event) =>
-      event.id === id ? { ...event, archived: false } : event
-    );
-    setScheduleEvents(updatedEvents);
-    toast.success('Мероприятие восстановлено из архива');
+  const handleUnarchiveEvent = async (id: number) => {
+    const event = scheduleEvents.find(e => e.id === id);
+    if (event) {
+      await updateEvent({ ...event, archived: false });
+      toast.success('Мероприятие восстановлено из архива');
+    }
   };
 
   const openEditDialog = (event: ScheduleEvent) => {
@@ -468,16 +311,15 @@ const Index = () => {
     setIsViewDialogOpen(true);
   };
 
-  const handleAddPerson = () => {
+  const handleAddPerson = async () => {
     if (newPerson.name && newPerson.position) {
-      const person: ResponsiblePerson = {
-        id: Math.max(...responsiblePersons.map((p) => p.id), 0) + 1,
+      await addPerson({
         name: newPerson.name!,
         position: newPerson.position!,
         phone: newPerson.phone || '',
         email: newPerson.email || '',
-      };
-      setResponsiblePersons([...responsiblePersons, person]);
+      });
+      
       setIsPersonDialogOpen(false);
       setNewPerson({
         name: '',
@@ -489,8 +331,8 @@ const Index = () => {
     }
   };
 
-  const handleDeletePerson = (id: number) => {
-    setResponsiblePersons(responsiblePersons.filter((p) => p.id !== id));
+  const handleDeletePerson = async (id: number) => {
+    await deletePerson(id);
     toast.success('Ответственное лицо удалено');
   };
 
@@ -525,6 +367,17 @@ const Index = () => {
     ];
     return `${weekdays[date.getDay()]}, ${parseInt(day)} ${months[date.getMonth()]} ${year}`;
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <Icon name="Loader2" size={48} className="animate-spin text-primary mx-auto mb-4" />
+          <p className="text-lg text-muted-foreground">Загрузка данных...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50">
