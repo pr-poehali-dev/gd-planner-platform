@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Icon from '@/components/ui/icon';
-import { DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -587,28 +586,10 @@ const Index = () => {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <ResponsiblePersonDialog
-                          open={isPersonDialogOpen}
-                          onOpenChange={setIsPersonDialogOpen}
-                          responsiblePersons={responsiblePersons}
-                          newPerson={newPerson}
-                          setNewPerson={setNewPerson}
-                          onAddPerson={handleAddPerson}
-                          onDeletePerson={handleDeletePerson}
-                        />
                         <Button variant="outline" className="shadow-sm" onClick={() => setIsPersonDialogOpen(true)}>
                           <Icon name="Users" size={16} className="mr-2" />
                           Ответственные
                         </Button>
-                        <EventFormDialog
-                          open={isAddDialogOpen}
-                          onOpenChange={setIsAddDialogOpen}
-                          event={newEvent}
-                          setEvent={setNewEvent}
-                          onSave={handleAddEvent}
-                          responsiblePersons={responsiblePersons}
-                          title="Добавить мероприятие в график"
-                        />
                         <Button className="shadow-sm" onClick={() => setIsAddDialogOpen(true)}>
                           <Icon name="Plus" size={16} className="mr-2" />
                           Добавить мероприятие
@@ -773,6 +754,16 @@ const Index = () => {
       </div>
 
       <EventFormDialog
+        open={isAddDialogOpen}
+        onOpenChange={setIsAddDialogOpen}
+        event={newEvent}
+        setEvent={setNewEvent}
+        onSave={handleAddEvent}
+        responsiblePersons={responsiblePersons}
+        title="Добавить мероприятие в график"
+      />
+
+      <EventFormDialog
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
         event={editEvent}
@@ -790,6 +781,16 @@ const Index = () => {
         responsiblePersons={responsiblePersons}
         onEdit={openEditDialog}
         formatDateHeader={formatDateHeader}
+      />
+
+      <ResponsiblePersonDialog
+        open={isPersonDialogOpen}
+        onOpenChange={setIsPersonDialogOpen}
+        responsiblePersons={responsiblePersons}
+        newPerson={newPerson}
+        setNewPerson={setNewPerson}
+        onAddPerson={handleAddPerson}
+        onDeletePerson={handleDeletePerson}
       />
     </div>
   );
