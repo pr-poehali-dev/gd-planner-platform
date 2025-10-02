@@ -1,18 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import Icon from '@/components/ui/icon';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +46,7 @@ interface ScheduleEvent {
 const Index = () => {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([
     {
       id: 1,
@@ -118,6 +111,31 @@ const Index = () => {
       status: 'scheduled',
       reminder: false,
     },
+    {
+      id: 6,
+      date: '04.10.2025',
+      timeStart: '09:00',
+      timeEnd: '10:30',
+      title: 'Пресс-конференция',
+      type: 'other',
+      location: 'Пресс-центр',
+      description: 'Обсуждение принятых законопроектов',
+      status: 'scheduled',
+      reminder: true,
+      reminderMinutes: 30,
+    },
+    {
+      id: 7,
+      date: '04.10.2025',
+      timeStart: '14:00',
+      timeEnd: '16:00',
+      title: 'Заседание фракции',
+      type: 'session',
+      location: 'Зал заседаний фракции',
+      description: 'Обсуждение стратегии на следующую неделю',
+      status: 'scheduled',
+      reminder: false,
+    },
   ]);
 
   const [newEvent, setNewEvent] = useState<Partial<ScheduleEvent>>({
@@ -156,6 +174,14 @@ const Index = () => {
     cancelled: 'Отменено',
   };
 
+  const typeColors = {
+    session: 'bg-blue-500/10 text-blue-700 border-blue-200',
+    committee: 'bg-purple-500/10 text-purple-700 border-purple-200',
+    meeting: 'bg-green-500/10 text-green-700 border-green-200',
+    visit: 'bg-orange-500/10 text-orange-700 border-orange-200',
+    other: 'bg-gray-500/10 text-gray-700 border-gray-200',
+  };
+
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
@@ -184,6 +210,44 @@ const Index = () => {
 
     return () => clearInterval(interval);
   }, [scheduleEvents]);
+
+  const filteredEvents = useMemo(() => {
+    return scheduleEvents.filter((event) => {
+      const matchesSearch =
+        event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.description.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    });
+  }, [scheduleEvents, searchQuery]);
+
+  const groupedEvents = useMemo(() => {
+    const groups: { [key: string]: ScheduleEvent[] } = {};
+    filteredEvents.forEach((event) => {
+      if (!groups[event.date]) {
+        groups[event.date] = [];
+      }
+      groups[event.date].push(event);
+    });
+    Object.keys(groups).forEach((date) => {
+      groups[date].sort((a, b) => {
+        const timeA = a.timeStart.split(':').map(Number);
+        const timeB = b.timeStart.split(':').map(Number);
+        return timeA[0] * 60 + timeA[1] - (timeB[0] * 60 + timeB[1]);
+      });
+    });
+    return groups;
+  }, [filteredEvents]);
+
+  const sortedDates = useMemo(() => {
+    return Object.keys(groupedEvents).sort((a, b) => {
+      const [dayA, monthA, yearA] = a.split('.');
+      const [dayB, monthB, yearB] = b.split('.');
+      const dateA = new Date(parseInt(yearA), parseInt(monthA) - 1, parseInt(dayA));
+      const dateB = new Date(parseInt(yearB), parseInt(monthB) - 1, parseInt(dayB));
+      return dateA.getTime() - dateB.getTime();
+    });
+  }, [groupedEvents]);
 
   const handleAddEvent = () => {
     if (newEvent.title && newEvent.date && newEvent.timeStart && newEvent.timeEnd) {
@@ -226,18 +290,9 @@ const Index = () => {
   const exportToPDF = () => {
     const doc = new jsPDF();
 
-    const addRussianFont = () => {
-      doc.addFont(
-        'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf',
-        'Roboto',
-        'normal'
-      );
-      doc.setFont('Roboto');
-    };
-
     doc.setFontSize(18);
     doc.text('График работы депутата Государственной Думы РФ', 14, 20);
-    
+
     doc.setFontSize(10);
     doc.text(`Дата формирования: ${new Date().toLocaleDateString('ru-RU')}`, 14, 28);
 
@@ -296,24 +351,53 @@ const Index = () => {
     })
     .slice(0, 5);
 
+  const formatDateHeader = (dateStr: string) => {
+    const [day, month, year] = dateStr.split('.');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    const weekdays = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+    const months = [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря',
+    ];
+    return `${weekdays[date.getDay()]}, ${parseInt(day)} ${months[date.getMonth()]} ${year}`;
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-primary text-primary-foreground shadow-md">
-        <div className="container mx-auto px-6 py-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50">
+      <header className="bg-gradient-to-r from-primary via-primary to-blue-800 text-primary-foreground shadow-lg border-b-4 border-blue-900">
+        <div className="container mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Icon name="Building2" size={32} />
+              <div className="bg-white/10 p-3 rounded-lg backdrop-blur-sm">
+                <Icon name="Building2" size={32} />
+              </div>
               <div>
-                <h1 className="text-2xl font-bold">Рабочий кабинет депутата</h1>
-                <p className="text-sm opacity-90">Государственная Дума РФ</p>
+                <h1 className="text-2xl font-bold tracking-tight">Рабочий кабинет депутата</h1>
+                <p className="text-sm opacity-90 font-medium">Государственная Дума Российской Федерации</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary/80">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-primary-foreground hover:bg-white/20 rounded-full"
+              >
                 <Icon name="Bell" size={20} />
               </Button>
-              <Avatar>
-                <AvatarFallback className="bg-secondary text-secondary-foreground">ДГ</AvatarFallback>
+              <Avatar className="ring-2 ring-white/30">
+                <AvatarFallback className="bg-secondary text-secondary-foreground font-bold">
+                  ДГ
+                </AvatarFallback>
               </Avatar>
             </div>
           </div>
@@ -323,21 +407,21 @@ const Index = () => {
       <div className="container mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-3 space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
+            <Card className="shadow-lg border-t-4 border-t-primary">
+              <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <CardTitle className="flex items-center gap-2">
-                    <Icon name="Calendar" size={20} />
-                    График работы
+                    <Icon name="Calendar" size={22} className="text-primary" />
+                    <span className="text-xl">График работы депутата</span>
                   </CardTitle>
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={exportToPDF}>
+                    <Button variant="outline" onClick={exportToPDF} className="shadow-sm">
                       <Icon name="FileDown" size={16} className="mr-2" />
                       Экспорт в PDF
                     </Button>
                     <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                       <DialogTrigger asChild>
-                        <Button>
+                        <Button className="shadow-sm">
                           <Icon name="Plus" size={16} className="mr-2" />
                           Добавить мероприятие
                         </Button>
@@ -475,134 +559,189 @@ const Index = () => {
                     </Dialog>
                   </div>
                 </div>
+                <div className="mt-4">
+                  <div className="relative">
+                    <Icon
+                      name="Search"
+                      size={18}
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                      placeholder="Поиск по названию, месту или описанию..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 bg-white shadow-sm"
+                    />
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Дата</TableHead>
-                      <TableHead>Время</TableHead>
-                      <TableHead>Мероприятие</TableHead>
-                      <TableHead>Тип</TableHead>
-                      <TableHead>Место</TableHead>
-                      <TableHead>Статус</TableHead>
-                      <TableHead className="text-center">Напоминание</TableHead>
-                      <TableHead className="text-right">Действия</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scheduleEvents.map((event) => (
-                      <TableRow key={event.id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">{event.date}</TableCell>
-                        <TableCell className="text-sm">
-                          {event.timeStart} - {event.timeEnd}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-semibold">{event.title}</p>
-                            {event.description && (
-                              <p className="text-sm text-muted-foreground">{event.description}</p>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="flex items-center gap-1 w-fit">
-                            <Icon name={typeIcons[event.type]} size={12} />
-                            {typeLabels[event.type]}
+              <CardContent className="p-6">
+                {sortedDates.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Icon name="CalendarX" size={48} className="mx-auto mb-3 opacity-50" />
+                    <p className="text-lg font-medium">Мероприятия не найдены</p>
+                    <p className="text-sm">Попробуйте изменить параметры поиска</p>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                    {sortedDates.map((dateStr) => (
+                      <div key={dateStr} className="space-y-3">
+                        <div className="flex items-center gap-3 pb-2 border-b-2 border-primary/20">
+                          <Icon name="CalendarDays" size={20} className="text-primary" />
+                          <h3 className="text-lg font-bold text-primary">{formatDateHeader(dateStr)}</h3>
+                          <Badge variant="outline" className="ml-auto">
+                            {groupedEvents[dateStr].length} мероприятий
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{event.location}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              event.status === 'in-progress'
-                                ? 'default'
-                                : event.status === 'completed'
-                                ? 'secondary'
-                                : event.status === 'cancelled'
-                                ? 'destructive'
-                                : 'outline'
-                            }
-                          >
-                            {statusLabels[event.status]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {event.reminder ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <Icon name="Bell" size={14} className="text-primary" />
-                              <span className="text-xs text-muted-foreground">
-                                {event.reminderMinutes} мин
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteEvent(event.id)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Icon name="Trash2" size={16} />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                        </div>
+                        <div className="grid gap-3">
+                          {groupedEvents[dateStr].map((event) => (
+                            <Card
+                              key={event.id}
+                              className={`hover:shadow-md transition-all border-l-4 ${
+                                event.status === 'in-progress'
+                                  ? 'border-l-green-500 bg-green-50/50'
+                                  : event.status === 'completed'
+                                  ? 'border-l-gray-400 bg-gray-50/50'
+                                  : event.status === 'cancelled'
+                                  ? 'border-l-red-400 bg-red-50/50'
+                                  : 'border-l-blue-500'
+                              }`}
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex items-start gap-4 flex-1">
+                                    <div
+                                      className={`p-3 rounded-lg ${typeColors[event.type]} border`}
+                                    >
+                                      <Icon name={typeIcons[event.type]} size={20} />
+                                    </div>
+                                    <div className="flex-1 space-y-2">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                          <h4 className="font-bold text-lg leading-tight mb-1">
+                                            {event.title}
+                                          </h4>
+                                          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                            <div className="flex items-center gap-1">
+                                              <Icon name="Clock" size={14} />
+                                              <span className="font-medium">
+                                                {event.timeStart} — {event.timeEnd}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <Icon name="MapPin" size={14} />
+                                              <span>{event.location}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      {event.description && (
+                                        <p className="text-sm text-muted-foreground">{event.description}</p>
+                                      )}
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <Badge variant="outline" className={typeColors[event.type]}>
+                                          {typeLabels[event.type]}
+                                        </Badge>
+                                        <Badge
+                                          variant={
+                                            event.status === 'in-progress'
+                                              ? 'default'
+                                              : event.status === 'completed'
+                                              ? 'secondary'
+                                              : event.status === 'cancelled'
+                                              ? 'destructive'
+                                              : 'outline'
+                                          }
+                                        >
+                                          {statusLabels[event.status]}
+                                        </Badge>
+                                        {event.reminder && (
+                                          <Badge variant="outline" className="flex items-center gap-1">
+                                            <Icon name="Bell" size={12} />
+                                            Напоминание за {event.reminderMinutes} мин
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleDeleteEvent(event.id)}
+                                    className="text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                  >
+                                    <Icon name="Trash2" size={18} />
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
+            <Card className="shadow-lg border-t-4 border-t-primary">
+              <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b">
                 <CardTitle className="flex items-center gap-2">
-                  <Icon name="CalendarDays" size={20} />
+                  <Icon name="CalendarDays" size={20} className="text-primary" />
                   Календарь
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <Calendar mode="single" selected={date} onSelect={setDate} className="rounded-md border" />
+              <CardContent className="p-4">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={setDate}
+                  className="rounded-md border shadow-sm"
+                />
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
+            <Card className="shadow-lg border-t-4 border-t-orange-500">
+              <CardHeader className="bg-gradient-to-r from-orange-50 to-amber-50 border-b">
                 <CardTitle className="flex items-center gap-2">
-                  <Icon name="Bell" size={20} />
+                  <Icon name="Bell" size={20} className="text-orange-600" />
                   Ближайшие напоминания
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4">
                 {upcomingReminders.length > 0 ? (
                   <div className="space-y-3">
                     {upcomingReminders.map((event) => (
                       <div
                         key={event.id}
-                        className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                        className="p-3 border rounded-lg hover:bg-muted/50 transition-colors bg-white shadow-sm"
                       >
-                        <div className="flex items-start justify-between mb-1">
-                          <h4 className="font-semibold text-sm">{event.title}</h4>
-                          <Badge variant="outline" className="text-xs">
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-semibold text-sm leading-tight pr-2">{event.title}</h4>
+                          <Badge variant="outline" className="text-xs shrink-0">
                             {event.date}
                           </Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mb-1">{event.timeStart}</p>
-                        <div className="flex items-center gap-1 text-xs text-primary">
-                          <Icon name="Bell" size={12} />
-                          <span>За {event.reminderMinutes} мин</span>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Icon name="Clock" size={12} />
+                            <span>{event.timeStart}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-primary font-medium">
+                            <Icon name="Bell" size={12} />
+                            <span>За {event.reminderMinutes} мин</span>
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Нет активных напоминаний
-                  </p>
+                  <div className="text-center py-8">
+                    <Icon name="BellOff" size={32} className="mx-auto mb-2 text-muted-foreground opacity-50" />
+                    <p className="text-sm text-muted-foreground">Нет активных напоминаний</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
